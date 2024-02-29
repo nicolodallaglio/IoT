@@ -9,6 +9,7 @@ DEBUG = True
 ALLOWED_HOSTS = [os.environ['djangoiot.azurewebsites.net']]
 CSRF_TRUSTED_ORIGIN = ['https://'+ os.environ['djangoiot.azurewebsites.net']]
 
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -17,7 +18,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    "whitenoise.runserver_nostatic",
+    'whitenoise.runserver_nostatic',
     'AppIoT',
 ]
 
