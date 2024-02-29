@@ -64,3 +64,10 @@ def index(request):
     ]
     #passiamo il mex al template e other urls
     return render(request,'index.html', {'greeting_message': greeting_message, 'other_urls': other_urls})
+
+def home(request):
+    # Qui puoi inserire il codice per ottenere eventuali dati da passare al template
+    context = {
+        'message': 'Benvenuto sulla homepage del tuo sito azure!'
+    }
+    return render(request, 'home.html', context)
