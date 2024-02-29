@@ -57,7 +57,7 @@ ROOT_URLCONF = 'djangoapp.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': ['path/to/your/templates/directory/'],  # Inserisci il percorso della tua directory dei template qui
+        'DIRS': [r'C:\Users\dalla\Desktop\Project\djangoapp\AppIoT\templates'],  # Inserisci il percorso della tua directory dei template qui C:\Users\dalla\Desktop\Project\djangoapp\AppIoT\templates
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
