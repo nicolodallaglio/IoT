@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Saluto</title>
+</head>
+<body>
+    <h1>{{ greeting_message }}</h1>
+    
+    <h2>Altri URL:</h2>
+    <ul>
+        {% for url_data in other_urls %}
+            <li>
+                <form action="{{ url_data.url }}">
+                    <button type="submit">{{ url_data.label }}</button>
+                </form>
+            </li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
