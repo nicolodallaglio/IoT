@@ -35,9 +35,9 @@ MIDDLEWARE = [
 #STATIC_URL = os.environ.get("DJANGO_STATIC_URL", "/static/")
 #STATIC_ROOT = os.environ.get("DJANGO_STATIC_ROOT", "./static/")
 
-STATIC_URL = os.environ.get(BASE_DIR, "/static/")
+STATIC_URL = os.environ.get(BASE_DIR, "/static")
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-STATIC_ROOT = os.path.join(BASE_DIR, "static")
+STATIC_ROOT = os.path.join(BASE_DIR, "/static")
 
 #cosmosDB
 DATABASES = {
