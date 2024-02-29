@@ -5,7 +5,7 @@ from .settings import BASE_DIR
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ['SECRET']
 
-DEBUG = True
+DEBUG = False
 ALLOWED_HOSTS = [os.environ['djangoiot.azurewebsites.net']]
 CSRF_TRUSTED_ORIGIN = ['https://'+ os.environ['djangoiot.azurewebsites.net']]
 
@@ -38,8 +38,10 @@ MIDDLEWARE = [
 
 STATIC_URL = os.environ.get(BASE_DIR, "/static")
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-STATIC_ROOT = os.path.join(BASE_DIR, "/static")
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
+
+"""
 #cosmosDB
 DATABASES = {
     'default': {
@@ -53,7 +55,7 @@ DATABASES = {
         },
     }
 }
-
+"""
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
