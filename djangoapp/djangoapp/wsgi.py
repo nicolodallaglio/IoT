@@ -26,6 +26,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', settings_module)
 
 application = get_wsgi_application()
 
+"""
 def send_to_adafruit_io():
     # Imposta le tue credenziali Adafruit IO qui
     ADAFRUIT_IO_USERNAME = 'nicodalla99'
@@ -49,3 +50,4 @@ def send_to_adafruit_io():
 
 # Questa funzione viene chiamata quando il server Django si avvia
 send_to_adafruit_io()
+"""
