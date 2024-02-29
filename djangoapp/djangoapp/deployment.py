@@ -3,7 +3,7 @@ from .settings import *
 from .settings import BASE_DIR
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-c-j(9x(6gj+(&5jaw6peh3hbd8q1r0-c8t8#upoc1z5%w1(w8q'
+SECRET_KEY = os.environ['SECRET']
 
 DEBUG = False
 ALLOWED_HOSTS = [os.environ['djangoiot.azurewebsites.net']]
