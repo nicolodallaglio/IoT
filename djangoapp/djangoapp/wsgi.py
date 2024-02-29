@@ -19,7 +19,7 @@ from django.core.wsgi import get_wsgi_application
 from AppIoT.models import MyModel
 
 #sceglie tra deployment o in localhost
-settings_module= 'djangoapp.deployment' if 'djangoiot.azurewebsites.net' in os.environ else 'djangoapp.settings'
+settings_module= 'djangoapp.deployment' if 'WEBSITE_HOSTNAME' in os.environ else 'djangoapp.settings'
 
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', settings_module)

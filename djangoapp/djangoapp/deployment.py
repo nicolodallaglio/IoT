@@ -6,8 +6,8 @@ from .settings import BASE_DIR
 SECRET_KEY = os.environ['SECRET']
 
 DEBUG = False
-ALLOWED_HOSTS = [os.environ['djangoiot.azurewebsites.net']]
-CSRF_TRUSTED_ORIGIN = ['https://'+ os.environ['djangoiot.azurewebsites.net']]
+ALLOWED_HOSTS = [os.environ['WEBSITE_HOSTNAME']]
+CSRF_TRUSTED_ORIGIN = ['https://'+ os.environ['WEBSITE_HOSTNAME']]
 
 
 # Application definition
@@ -24,6 +24,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Add whitenoise middleware after the security middleware
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -37,6 +38,7 @@ MIDDLEWARE = [
 #STATIC_ROOT = os.environ.get("DJANGO_STATIC_ROOT", "./static/")
 
 STATIC_URL = os.environ.get(BASE_DIR, "/static")
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
