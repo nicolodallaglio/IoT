@@ -49,16 +49,3 @@ def send_to_adafruit_io():
 
 # Questa funzione viene chiamata quando il server Django si avvia
 send_to_adafruit_io()
-
-def application(environ, start_response):
-    # Definisci la risposta HTTP
-    status = '200 OK'
-    headers = [('Content-type', 'text/html')]
-    output = b'<html><body><h1>Benvenuto su Django IoT su Azure!</h1></body></html>'
-
-    # Avvia la risposta
-    start_response(status, headers)
-
-    # Restituisci il contenuto della risposta
-    return [output]
-

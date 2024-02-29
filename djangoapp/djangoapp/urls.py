@@ -19,7 +19,7 @@ from django.urls import path
 from AppIoT.views import DatiSerialeView, Ranking, SaveDataView, create_my_model, index, home
 
 urlpatterns = [
-    path('', home, name='home'),
+    path('home', home, name='home'),
     path("admin/", admin.site.urls),
     path('create_my_model/', create_my_model, name='create_my_model'),
     path('dati-seriale/', DatiSerialeView.as_view(), name='dati-seriale'),

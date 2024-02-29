@@ -26,8 +26,9 @@ SECRET_KEY = 'django-insecure-c-j(9x(6gj+(&5jaw6peh3hbd8q1r0-c8t8#upoc1z5%w1(w8q
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 #ALLOWED_HOSTS = []
-ALLOWED_HOSTS = [os.environ['djangoiot.azurewebsites.net']]
-CSRF_TRUSTED_ORIGIN = ['https://'+ os.environ['djangoiot.azurewebsites.net']]
+#ALLOWED_HOSTS = [os.environ['djangoiot.azurewebsites.net']]
+ALLOWED_HOSTS = ['djangoiot.azurewebsites.net']
+#CSRF_TRUSTED_ORIGIN = ['https://'+ os.environ['djangoiot.azurewebsites.net']]
 
 # Application definition
 
@@ -57,7 +58,7 @@ ROOT_URLCONF = 'djangoapp.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [r'C:\Users\dalla\Desktop\Project\djangoapp\AppIoT\templates'],  # Inserisci il percorso della tua directory dei template qui C:\Users\dalla\Desktop\Project\djangoapp\AppIoT\templates
+        'DIRS': ['Project/djangoapp/AppIoT/templates'],  # Inserisci il percorso della tua directory dei template qui C:\Users\dalla\Desktop\Project\djangoapp\AppIoT\templates
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
