@@ -43,21 +43,20 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 
-"""
-#cosmosDB
+#DBforPostgreSQL
 DATABASES = {
     'default': {
-        'ENGINE': 'django_cosmosdb.backends.CosmosDB',
-        'HOST': 'https://cosmosiot.documents.azure.com:443/',
-        'PORT': 10255,  # Porta predefinita per Cosmos DB
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'databaseiot',
+        'USER': os.environ.get('DB_USER'),  # Assicurati di impostare questa variabile di ambiente con il nome utente del tuo database
+        'PASSWORD': os.environ.get('DB_PASSWORD'),  # Assicurati di impostare questa variabile di ambiente con la password del tuo database
+        'HOST': os.environ.get('DB_HOST'),  # Assicurati di impostare questa variabile di ambiente con l'host del tuo database
+        'PORT': os.environ.get('DB_PORT', '5432'),  # Assicurati di impostare questa variabile di ambiente con la porta del tuo database, di default è 5432 per PostgreSQL
         'OPTIONS': {
-            'masterkey': 't7ulPQLXlfAYTG0QTpbojHpEnYJQkcnY1PE8CTB0PK4jH7yiZUH9drJoKkuTuFf64ntb4Hs1NUsxACDbp3WATg==',
-            'database': 'cosmosiot',
-            'collection': 'YOUR_COLLECTION_NAME',
-        },
+            'sslmode': 'require',  # Impostazione necessaria per connettersi in modo sicuro ai database PostgreSQL su Azure
+        }
     }
 }
-"""
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
