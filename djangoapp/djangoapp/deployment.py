@@ -37,11 +37,11 @@ MIDDLEWARE = [
 #STATIC_URL = os.environ.get("DJANGO_STATIC_URL", "/static/")
 #STATIC_ROOT = os.environ.get("DJANGO_STATIC_ROOT", "./static/")
 
-STATIC_URL = os.environ.get(BASE_DIR, "staticfiles")
-SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+#STATIC_URL = os.environ.get(BASE_DIR, "static")
+#SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+STATIC_ROOT = os.path.join(BASE_DIR, "static")
 
 
 #DBforPostgreSQL
