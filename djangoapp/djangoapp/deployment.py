@@ -45,10 +45,29 @@ STATIC_ROOT = os.path.join(BASE_DIR, "static")
 
 
 #DBforPostgreSQL
+import psycopg2
+
+# Update connection string information
+
+host = "databaseiot.postgres.database.azure.com"
+dbname = "postgres"
+user = "nico99"
+password = "lollipop99!"
+sslmode = "require"
+
+# Construct connection string
+
+conn_string = "host={0} user={1} dbname={2} password={3} sslmode={4}".format(host, user, dbname, password, sslmode)
+conn = psycopg2.connect(conn_string)
+print("Connection established")
+
+cursor = conn.cursor()
+
+"""
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'databaseiot',
+        'NAME': 'databaseiot.postgres.database.azure.com',
         'USER': os.environ.get('DB_USER'),  # Assicurati di impostare questa variabile di ambiente con il nome utente del tuo database
         'PASSWORD': os.environ.get('DB_PASSWORD'),  # Assicurati di impostare questa variabile di ambiente con la password del tuo database
         'HOST': os.environ.get('DB_HOST'),  # Assicurati di impostare questa variabile di ambiente con l'host del tuo database
@@ -58,6 +77,7 @@ DATABASES = {
         }
     }
 }
+"""
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
