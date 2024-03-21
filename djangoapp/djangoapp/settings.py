@@ -86,7 +86,7 @@ DATABASES = {
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'iot',  # Il nome del database MySQL
+        'NAME': 'nicodalla$iot',  # Il nome del database MySQL
         'USER': 'nicodalla',      # Il nome utente del database MySQL
         'PASSWORD': 'databaseiot',
         'HOST': 'nicodalla.mysql.pythonanywhere-services.com',  # Indirizzo host del database MySQL
