@@ -75,10 +75,22 @@ WSGI_APPLICATION = 'djangoapp.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
+"""
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
+"""
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'iot',  # Il nome del database MySQL
+        'USER': 'nicodalla',      # Il nome utente del database MySQL
+        'PASSWORD': 'databaseiot',
+        'HOST': 'nicodalla.mysql.pythonanywhere-services.com',  # Indirizzo host del database MySQL
+        'PORT': '3306',           # Porta del database MySQL (solitamente 3306)
     }
 }
 
