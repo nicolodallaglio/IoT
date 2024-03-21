@@ -28,7 +28,7 @@ application = get_wsgi_application()
 def send_to_adafruit_io():
     # Imposta le tue credenziali Adafruit IO qui
     ADAFRUIT_IO_USERNAME = 'nicodalla99'
-    ADAFRUIT_IO_KEY = 'aio_FXcQ35cqPK9roCVffNMoqjDKMBT8'
+    ADAFRUIT_IO_KEY = ''
 
     url = f'https://io.adafruit.com/api/v2/{ADAFRUIT_IO_USERNAME}/feeds/serverdiprova/data'
     headers = {'X-AIO-Key': ADAFRUIT_IO_KEY}
