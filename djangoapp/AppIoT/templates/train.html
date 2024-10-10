@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Train Model</title>
+</head>
+<body>
+    <h1>Upload CSV to Train Model</h1>
+    <form action="/train/" method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <label for="file">Select CSV File:</label>
+        <input type="file" name="file" id="file" required>
+        <button type="submit">Upload and Train</button>
+    </form>
+</body>
+</html>
