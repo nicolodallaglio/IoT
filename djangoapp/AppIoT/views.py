@@ -10,6 +10,7 @@ from .ml_model.ml_model import train_model, predict_occupancy
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets
 from .serializers import RoomSerializer
+from rest_framework import viewsets
 
 from .models import DatiSeriale
 from .models import MyModel
@@ -17,14 +18,7 @@ from .bridge import Bridge
 from .models import MainPage
 from .models import Room
 
-
-
-# view per i serializer per restituire i dati tramite API. 
-class RoomViewSet(viewsets.ModelViewSet):
-    queryset = Room.objects.all()
-    serializer_class = RoomSerializer
-
-
+# -------------------- ML --------------------
 #TRAIN ML
 def train_model_view(request):
     if request.method == 'GET':
@@ -94,7 +88,10 @@ class SaveDataView(View):
         bridge = Bridge()
         bridge.useData1()
         return JsonResponse({"message": "Dati salvati correttamente."})
-   
+    
+
+# ---------------- INDEX -------------------------
+
 def index(request):
     #mex di saluto
     greeting_message = "Benvenuto nel nostro progetto IoT 2024/2025"
@@ -113,6 +110,7 @@ def index(request):
 
 
 
+# ----------------- ALGORITMO --------------------
 #algoritmo considererà vari criteri, come il prezzo, la disponibilità e il rating della stanza
 
 def find_optimal_room(max_price, min_rating):
@@ -145,4 +143,41 @@ def mostra_migliori_stanze(request):
     migliori_stanze = find_optimal_room(max_price, min_rating)
     
     return render(request, 'migliori_stanze.html', {'aule': migliori_stanze})
+
+
+
+# --------- API FLUTTER ------------
+
+# Crea un ViewSet per gestire le operazioni CRUD: Il ViewSet viene utilizzato per gestire tutte le operazioni REST (GET, POST, PUT, DELETE).
+# Questo RoomViewSet gestirà tutte le operazioni sulle stanze (aule) usando il RoomSerializer
+class RoomViewSet(viewsets.ModelViewSet):
+    queryset = Room.objects.all()  # Recupera tutte le stanze dal database
+    serializer_class = RoomSerializer  # Usa il serializer per trasformare i dati
+
+
+# Nuova vista API per Flutter che restituisce le migliori aule in formato JSON
+def api_migliori_stanze(request):
+    # Parametri predefiniti o puoi permettere all'app Flutter di passarli come GET params
+    max_price = float(request.GET.get('max_price', 1000))
+    min_rating = float(request.GET.get('min_rating', 3))
+
+    # Trova le migliori stanze utilizzando la tua logica esistente
+    migliori_stanze = Room.objects.filter(availability=True, price__lte=max_price, rating__gte=min_rating).order_by('-rating')
+
+    if not migliori_stanze.exists():
+        return JsonResponse({'error': 'No rooms available'}, status=404)
+
+    # Prepara i dati in formato JSON
+    rooms_data = []
+    for room in migliori_stanze:
+        rooms_data.append({
+            'name': room.name,
+            'price': float(room.price),  # Converti Decimal in float
+            'rating': room.rating,
+            'availability': room.availability,
+            'sensor_data': room.sensor_data  # JSON compatibile
+        })
+
+    # Restituisci la lista di aule come JSON
+    return JsonResponse({'rooms': rooms_data})
 
