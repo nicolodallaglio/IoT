@@ -78,20 +78,6 @@ DATABASES = {
 }
 
 
-#Database online
-"""
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'nicodalla$database',  # Il nome del database MySQL
-        'USER': 'nicodalla',      # Il nome utente del database MySQL
-        'PASSWORD': 'databaseiot',
-        'HOST': 'nicodalla.mysql.pythonanywhere-services.com',  # Indirizzo host del database MySQL
-        'PORT': '3306',           # Porta del database MySQL (solitamente 3306)
-    }
-}
-"""
-
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 
