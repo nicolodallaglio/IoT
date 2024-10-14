@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Migliori Stanze Disponibili</title>
+</head>
+<body>
+    <h1>Le Migliori Stanze Disponibili</h1>
+    
+    {% if aule %}
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Prezzo</th>
+                    <th>Punteggio</th>
+                    <th>Disponibilità</th>
+                    <th>Comfort Sensore</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for aula in aule %}
+                    <tr>
+                        <td>{{ aula.name }}</td>
+                        <td>{{ aula.price }} €</td>
+                        <td>{{ aula.rating }}/5</td>
+                        <td>{% if aula.availability %}Disponibile{% else %}Occupato{% endif %}</td>
+                        <td>{{ aula.sensor_data.comfort }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>Non ci sono aule disponibili che soddisfano i criteri.</p>
+    {% endif %}
+</body>
+</html>

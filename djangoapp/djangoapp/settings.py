@@ -9,7 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = ''
+SECRET_KEY = '+=qcplywafira(ydri0pz4^pe&w)-p$305c8kyy_)5bt#q&-=-'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -26,10 +26,12 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'AppIoT',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -37,12 +39,12 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders',
 ]
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",  # Il dominio o indirizzo IP da cui l'app Flutter farà richieste
-    "http://localhost:8080",  # Se l'app Flutter è in esecuzione su un altro porto
+    "http://localhost:8080",
+    "http://127.0.0.1:8000",  # Se l'app Flutter è in esecuzione su un altro porto
 ]
 
 ROOT_URLCONF = 'djangoapp.urls'

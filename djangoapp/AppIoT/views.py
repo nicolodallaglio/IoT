@@ -9,23 +9,20 @@ from django.shortcuts import render
 from .ml_model.ml_model import train_model, predict_occupancy
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets
-from .models import Aula
-from .serializers import AulaSerializer
+from .serializers import RoomSerializer
 
 from .models import DatiSeriale
 from .models import MyModel
 from .bridge import Bridge
-from .models import Aula
 from .models import MainPage
 from .models import Room
 
 
 
 # view per i serializer per restituire i dati tramite API. 
-class AulaViewSet(viewsets.ModelViewSet):
-    queryset = Aula.objects.all()
-    serializer_class = AulaSerializer
-
+class RoomViewSet(viewsets.ModelViewSet):
+    queryset = Room.objects.all()
+    serializer_class = RoomSerializer
 
 
 #TRAIN ML
@@ -73,7 +70,7 @@ def predict_view(request):
 
     return JsonResponse({"error": "Invalid request method. Only POST is allowed."}, status=405)
 
-# logica di regressione lineare per predire il prezzo dinamico delle aule 
+# logica di regressione lineare per predire il prezzo dinamico delle stanze 
 def predici_prezzo(input_data):
     # Inserisci qui il modello di regressione lineare per predire i prezzi
     modello = ...  # Carica il modello addestrato
@@ -97,27 +94,7 @@ class SaveDataView(View):
         bridge = Bridge()
         bridge.useData1()
         return JsonResponse({"message": "Dati salvati correttamente."})
-
-class Ranking(View):
-    def salva_classifica(request):
-        # Dizionario di aule con punteggi
-        aule = {
-            'Aula1': 85,
-            'Aula2': 90,
-            'Aula3': 1000,
-            'Aula4': 92,
-            'Aula5': 88
-        }
-
-        # Salva le aule nel database
-        for nome, punteggio in aule.items():
-            aula, created = Aula.objects.get_or_create(nome=nome, defaults={'punteggio': punteggio})
-            if not created:
-                aula.punteggio = punteggio
-                aula.save()
-
-        return HttpResponse('Classifica salvata con successo!')
-    
+   
 def index(request):
     #mex di saluto
     greeting_message = "Benvenuto nel nostro progetto IoT 2024/2025"
@@ -127,59 +104,45 @@ def index(request):
         {'url': '/dati-seriale/', 'label': 'Dati seriali'},
         {'url': '/save-data/', 'label': 'Salva dati'},
         {'url': '/classifica/', 'label': 'Salva classifica'},
+        {'url': '/train/', 'label': 'Traina il modello'},
+        {'url': '/migliori-stanze/', 'label': 'Stanze'},
         # Aggiungi altri URL qui, se necessario
     ]
     #passiamo il mex al template e other urls
     return render(request,'index.html', {'greeting_message': greeting_message, 'other_urls': other_urls})
 
-def home(request):
-    # Qui puoi inserire il codice per ottenere eventuali dati da passare al template
-    context = {
-        'message': 'Benvenuto sulla homepage del tuo sito azure!'
-    }
-    return render(request, 'home.html', context)
 
 
 #algoritmo considererà vari criteri, come il prezzo, la disponibilità e il rating della stanza
 
 def find_optimal_room(max_price, min_rating):
-    # Filtra le stanze disponibili e che rispettano i requisiti di prezzo e punteggio
     rooms = Room.objects.filter(availability=True, price__lte=max_price, rating__gte=min_rating)
-    
+
     if not rooms.exists():
         return None  # Nessuna stanza disponibile
 
-    # Assegna un punteggio basato su prezzo, rating e dati dei sensori
     def score_room(room):
         price_weight = 0.4  # Peso del prezzo
         rating_weight = 0.5  # Peso del rating
         sensor_weight = 0.1  # Peso dei dati del sensore (ad es., temperatura, comfort)
 
         # Normalizza il prezzo, rating e dati del sensore
-        price_score = (max_price - room.price) / max_price
+        price_score = (max_price - float(room.price)) / max_price  # Converti il prezzo in float
         rating_score = room.rating / 5.0
         sensor_score = room.sensor_data.get('comfort', 1) / 10.0  # supponendo un valore di comfort da 1 a 10
 
         # Calcola il punteggio finale
         return price_weight * price_score + rating_weight * rating_score + sensor_weight * sensor_score
 
-    # Ordina le stanze in base al punteggio e restituisci la migliore
-    best_room = max(rooms, key=score_room)
-    return best_room
 
+    rooms_sorted = sorted(rooms, key=score_room, reverse=True)
+    return rooms_sorted
 
-def get_optimal_room(request):
-    max_price = float(request.GET.get('max_price', 1000))
-    min_rating = float(request.GET.get('min_rating', 3))
+def mostra_migliori_stanze(request):
+    max_price = 1000  # Prezzo massimo predefinito
+    min_rating = 3    # Punteggio minimo predefinito
 
-    optimal_room = find_optimal_room(max_price, min_rating)
-
-    if optimal_room:
-        return JsonResponse({
-            'room_name': optimal_room.name,
-            'price': optimal_room.price,
-            'rating': optimal_room.rating,
-        })
-    else:
-        return JsonResponse({'error': 'No rooms available'}, status=404)
+    migliori_stanze = find_optimal_room(max_price, min_rating)
+    
+    return render(request, 'migliori_stanze.html', {'aule': migliori_stanze})
 

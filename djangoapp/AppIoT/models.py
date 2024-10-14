@@ -1,39 +1,19 @@
 from django.db import models
 
-# Create your models here.
-class MainPage(models.Model):
-    main = models.TextField()
-    
-class MyModel(models.Model):
-    value = models.BooleanField(default=False)
-
-class DatiSeriale(models.Model):
-    dati = models.TextField()
-    timestamp = models.DateTimeField(auto_now_add=True)
-
-class SaveData(models.Model):
-    dati = models.CharField(max_length=255)
-
-    def __str__(self):
-        return self.dati
-
-from django.db import models
-
 class Venditore(models.Model):
     nome = models.CharField(max_length=255)
     pubblica = models.BooleanField(default=False)  # Pubblico o privato
+    
+    def __str__(self):
+        return self.nome
 
 class Bridge(models.Model):
     venditore = models.ForeignKey(Venditore, on_delete=models.CASCADE)
     nome = models.CharField(max_length=255)
+    descrizione = models.TextField(null=True, blank=True)  # Dettagli aggiuntivi sul bridge
 
-class Aula(models.Model):
-    bridge = models.ForeignKey(Bridge, on_delete=models.CASCADE)
-    sensori_arduino = models.JSONField()  # Dati provenienti dai sensori di Arduino
-    prezzo = models.FloatField()  # Prezzo dinamico
-    occupato = models.BooleanField(default=False)
-    posizione = models.CharField(max_length=255)  # Posizione statica
-    tipo = models.CharField(max_length=50, choices=[('pagamento', 'A Pagamento'), ('gratis', 'Gratis')])
+    def __str__(self):
+        return f"{self.nome} - {self.venditore.nome}"
 
 class Utente(models.Model):
     nome = models.CharField(max_length=255)
@@ -54,7 +34,7 @@ class Room(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     rating = models.FloatField(default=0.0)  # Punteggio da 1 a 5
     availability = models.BooleanField(default=True)
-    sensor_data = models.JSONField(default=dict)  # Può contenere i dati dei sensori come temperatura, umidità, ecc.
+    sensor_data = models.JSONField(default=dict)  # Può contenere i dati dei sensori come temperatura, umidità, comfort, ecc.
 
     def __str__(self):
         return self.name
@@ -67,3 +47,20 @@ class Booking(models.Model):
     
     def __str__(self):
         return f"{self.room.name} - {self.user}"
+    
+
+class MainPage(models.Model):
+    main = models.TextField()
+    
+class MyModel(models.Model):
+    value = models.BooleanField(default=False)
+
+class DatiSeriale(models.Model):
+    dati = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+class SaveData(models.Model):
+    dati = models.CharField(max_length=255)
+
+    def __str__(self):
+        return self.dati
