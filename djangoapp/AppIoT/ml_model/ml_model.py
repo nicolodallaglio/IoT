@@ -37,10 +37,21 @@ def train_model(file):
         "accuracy_test": accuracy_test
     }
 
-def predict_occupancy(input_data):
+def predict_and_sort_rooms(input_data):
     # Carica il modello salvato
     model_path = os.path.join(settings.BASE_DIR, 'AppIoT', 'ml_model', 'occupancy_model.pkl')
     model = joblib.load(model_path)
+    
+    # Prevedi le probabilità e le classi
     probabilities = model.predict_proba(input_data)[:, 1]
     predicted_classes = model.predict(input_data)
-    return probabilities, predicted_classes
+
+    # Aggiungi le probabilità e le classi previste al DataFrame
+    input_data['probability'] = probabilities
+    input_data['predicted_class'] = predicted_classes
+
+    # Ordina le stanze in base alla probabilità, dalla più alta alla più bassa
+    sorted_rooms = input_data.sort_values(by='probability', ascending=False)
+
+    return sorted_rooms
+

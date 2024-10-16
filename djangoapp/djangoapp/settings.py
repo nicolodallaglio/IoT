@@ -12,8 +12,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = '+=qcplywafira(ydri0pz4^pe&w)-p$305c8kyy_)5bt#q&-=-'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-ALLOWED_HOSTS = ['nicodalla.pythonanywhere.com', '127.0.0.1', 'localhost']
+DEBUG = False
+ALLOWED_HOSTS = ['nicodalla.pythonanywhere.com', '127.0.0.1', 'localhost', '95.251.170.96','smartrooms.ddns.net']
 
 
 # Application definition
@@ -44,7 +44,10 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",  # Il dominio o indirizzo IP da cui l'app Flutter farà richieste
     "http://localhost:8080",
-    "http://127.0.0.1:8000",  # Se l'app Flutter è in esecuzione su un altro porto
+    "http://127.0.0.1:8000",
+      # Se l'app Flutter è in esecuzione su un altro porto "http://109.54.26.124:8000",
+      "http://37.161.226.9",
+      "http://smartrooms.ddns.net",
 ]
 
 ROOT_URLCONF = 'djangoapp.urls'

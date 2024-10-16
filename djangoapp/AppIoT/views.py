@@ -6,7 +6,7 @@ import json
 from django.views import View
 from django.views.generic import ListView
 from django.shortcuts import render
-from .ml_model.ml_model import train_model, predict_occupancy
+from .ml_model.ml_model import train_model, predict_and_sort_rooms
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets
 from .serializers import RoomSerializer
@@ -20,6 +20,7 @@ from .models import Room
 
 # -------------------- ML --------------------
 #TRAIN ML
+# training a partire dal csv
 def train_model_view(request):
     if request.method == 'GET':
         # Renderizza il template HTML per il form di upload
@@ -36,12 +37,13 @@ def train_model_view(request):
         return JsonResponse({"error": "Invalid request method"}, status=400)
 
 #PREDICT ML
+# predice se la nuova stanza è buona o no
 def predict_view(request):
     if request.method == 'POST':
         try:
             # Ottieni i dati di input dal corpo della richiesta (in formato JSON)
             data = json.loads(request.body)
-            
+
             # Converte i dati in un DataFrame Pandas
             input_data = pd.DataFrame(data)
 
@@ -51,6 +53,18 @@ def predict_view(request):
 
             # Usa la funzione predict_occupancy per fare previsioni
             probabilities, predicted_classes = predict_occupancy(input_data)
+
+            # Cicla attraverso i dati e le previsioni, e salva ogni stanza nel database
+            for i, row in input_data.iterrows():
+                Room.objects.create(
+                    name=f"Room {i + 1}",
+                    temperature=row['Temperature'],
+                    humidity=row['Humidity'],
+                    light=row['Light'],
+                    co2=row['CO2'],
+                    humidity_ratio=row['HumidityRatio'],
+                    occupancy=predicted_classes[i]  # Salva la previsione di occupazione
+                )
 
             # Restituisci il risultato come risposta JSON
             response = {
@@ -63,6 +77,7 @@ def predict_view(request):
             return JsonResponse({"error": str(e)}, status=400)
 
     return JsonResponse({"error": "Invalid request method. Only POST is allowed."}, status=405)
+
 
 # logica di regressione lineare per predire il prezzo dinamico delle stanze 
 def predici_prezzo(input_data):
@@ -145,6 +160,30 @@ def mostra_migliori_stanze(request):
     return render(request, 'migliori_stanze.html', {'aule': migliori_stanze})
 
 
+# --------- ARDUINO BRIDGE ------------
+
+@csrf_exempt
+def receive_sensor_data(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)  # Carica i dati JSON inviati
+            
+            temperature = data.get('temperature')
+            humidity = data.get('humidity')
+            light_scaled = data.get('light_scaled')
+            co2_scaled = data.get('co2_scaled')
+            sound = data.get('sound')
+            room_size = data.get('room_size')
+            people = data.get('people')
+
+            # Stampa i dati ricevuti per verificare
+            print(f"Received data: Temperature={temperature}, Humidity={humidity}, Light_scaled={light_scaled}, CO2_scaled={co2_scaled}, Sound={sound}, Room_Size={room_size}, People={people}")
+
+            return JsonResponse({"status": "success", "data_received": data}, status=200)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+    return JsonResponse({"error": "Invalid request method"}, status=405)
 
 # --------- API FLUTTER ------------
 
@@ -172,6 +211,7 @@ def api_migliori_stanze(request):
     for room in migliori_stanze:
         rooms_data.append({
             'name': room.name,
+            'posizione': room.posizione,
             'price': float(room.price),  # Converti Decimal in float
             'rating': room.rating,
             'availability': room.availability,

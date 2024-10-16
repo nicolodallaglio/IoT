@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from django.contrib import admin
 from AppIoT.views import RoomViewSet, create_my_model, DatiSerialeView, SaveDataView, train_model_view, predict_view, mostra_migliori_stanze, api_migliori_stanze, index
+from AppIoT.views import receive_sensor_data
 
 # Router per le API
 router = DefaultRouter()
@@ -17,6 +18,7 @@ urlpatterns = [
     path('train/', train_model_view, name='train_model'),
     path('predict/', predict_view, name='predict'),
     path('migliori-stanze/', mostra_migliori_stanze, name='migliori_stanze'),
+    path('api/receive_sensor_data/', receive_sensor_data, name='receive_sensor_data'),
     path('api/migliori-stanze/', api_migliori_stanze, name='api_migliori_stanze'),
     path('api/', include(router.urls)),  # Include il router con tutti gli endpoint delle API
     path('', index, name='main-page'),

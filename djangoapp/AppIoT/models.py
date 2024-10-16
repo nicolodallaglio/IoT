@@ -32,6 +32,7 @@ class Calendario(models.Model):
 class Room(models.Model):
     name = models.CharField(max_length=255)
     price = models.DecimalField(max_digits=10, decimal_places=2)
+    posizione = models.CharField(max_length=255, default=True)
     rating = models.FloatField(default=0.0)  # Punteggio da 1 a 5
     availability = models.BooleanField(default=True)
     sensor_data = models.JSONField(default=dict)  # Può contenere i dati dei sensori come temperatura, umidità, comfort, ecc.
