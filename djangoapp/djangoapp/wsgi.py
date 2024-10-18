@@ -16,7 +16,6 @@ https://docs.djangoproject.com/en/4.2/howto/deployment/wsgi/
 import os
 import requests
 from django.core.wsgi import get_wsgi_application
-from AppIoT.models import MyModel
 
 #sceglie tra deployment o localhost
 settings_module = 'djangoapp.settings'

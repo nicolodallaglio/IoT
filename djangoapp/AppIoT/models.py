@@ -48,20 +48,3 @@ class Booking(models.Model):
     
     def __str__(self):
         return f"{self.room.name} - {self.user}"
-    
-
-class MainPage(models.Model):
-    main = models.TextField()
-    
-class MyModel(models.Model):
-    value = models.BooleanField(default=False)
-
-class DatiSeriale(models.Model):
-    dati = models.TextField()
-    timestamp = models.DateTimeField(auto_now_add=True)
-
-class SaveData(models.Model):
-    dati = models.CharField(max_length=255)
-
-    def __str__(self):
-        return self.dati

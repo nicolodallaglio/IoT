@@ -12,10 +12,6 @@ from rest_framework import viewsets
 from .serializers import RoomSerializer
 from rest_framework import viewsets
 
-from .models import DatiSeriale
-from .models import MyModel
-from .bridge import Bridge
-from .models import MainPage
 from .models import Room
 
 # -------------------- ML --------------------
@@ -52,7 +48,7 @@ def predict_view(request):
                 return JsonResponse({"error": "Empty input data provided"}, status=400)
 
             # Usa la funzione predict_occupancy per fare previsioni
-            probabilities, predicted_classes = predict_occupancy(input_data)
+            probabilities, predicted_classes = predict_and_sort_rooms(input_data)
 
             # Cicla attraverso i dati e le previsioni, e salva ogni stanza nel database
             for i, row in input_data.iterrows():
@@ -86,25 +82,7 @@ def predici_prezzo(input_data):
     prezzo_predetto = modello.predict(input_data)
     return prezzo_predetto
 
-
-def create_my_model(request):
-    # Creare un'istanza del modello con il valore impostato su True
-    my_model_instance = MyModel(value=True)
-    # Salvare l'istanza nel database
-    my_model_instance.save()
-    return HttpResponse("Istanza di MyModel creata con successo!")
-
-class DatiSerialeView(ListView):
-    model = DatiSeriale
-    template_name = 'seriale.html'
-
-class SaveDataView(View):
-    def get(self, request, *args, **kwargs):
-        bridge = Bridge()
-        bridge.useData1()
-        return JsonResponse({"message": "Dati salvati correttamente."})
     
-
 # ---------------- INDEX -------------------------
 
 def index(request):
@@ -220,4 +198,29 @@ def api_migliori_stanze(request):
 
     # Restituisci la lista di aule come JSON
     return JsonResponse({'rooms': rooms_data})
+
+
+#posizione
+def receive_location_data(request):
+    if request.method == 'POST':
+        try:
+            # Ottieni i dati di input dal corpo della richiesta (in formato JSON)
+            data = json.loads(request.body)
+
+            # Estrai longitudine e latitudine dai dati
+            longitude = data.get('longitude')
+            latitude = data.get('latitude')
+
+            if longitude is None or latitude is None:
+                return JsonResponse({"error": "Longitude and latitude are required"}, status=400)
+
+            # Qui puoi salvare i dati nel database o processarli come necessario
+            print(f"Received location: Longitude={longitude}, Latitude={latitude}")
+
+            return JsonResponse({"status": "success", "longitude": longitude, "latitude": latitude}, status=200)
+        
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+    return JsonResponse({"error": "Invalid request method. Only POST is allowed."}, status=405)
 
