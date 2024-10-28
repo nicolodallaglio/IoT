@@ -13,20 +13,38 @@
             <thead>
                 <tr>
                     <th>Nome</th>
+                    <th>Tipo</th>
                     <th>Prezzo</th>
-                    <th>Punteggio</th>
-                    <th>Disponibilità</th>
-                    <th>Comfort Sensore</th>
+                    <th>Temperatura</th>
+                    <th>CO2</th>
+                    <th>Rumore</th>
+                    <th>Luce</th>
+                    <th>Umidità</th>
+                    <th>Grandezza Stanza</th>
+                    <th>Persone</th>
+                    <th>Latitudine</th>
+                    <th>Longitudine</th>
+                    <th>Best Room</th>
+                    <th>Rating</th>
                 </tr>
             </thead>
             <tbody>
                 {% for aula in aule %}
                     <tr>
                         <td>{{ aula.name }}</td>
-                        <td>{{ aula.price }} €</td>
-                        <td>{{ aula.rating }}/5</td>
-                        <td>{% if aula.availability %}Disponibile{% else %}Occupato{% endif %}</td>
-                        <td>{{ aula.sensor_data.comfort }}</td>
+                        <td>{{ aula.type }}</td>
+                        <td>{{ aula.price|floatformat:1 }} €</td>
+                        <td>{{ aula.temperature|floatformat:1 }} °C</td>  <!-- Arrotonda a 1 decimale -->
+                        <td>{{ aula.co2|floatformat:1 }} ppm</td>          <!-- Arrotonda a 1 decimale -->
+                        <td>{{ aula.sound|floatformat:1 }} dB</td>         <!-- Arrotonda a 1 decimale -->
+                        <td>{{ aula.light|floatformat:1 }} lux</td>        <!-- Arrotonda a 1 decimale -->
+                        <td>{{ aula.humidity|floatformat:1 }}%</td>        <!-- Arrotonda a 1 decimale -->
+                        <td>{{ aula.room_size|floatformat:1 }} m²</td>     <!-- Arrotonda a 1 decimale -->
+                        <td>{{ aula.people }}</td>                         <!-- Mostra il numero di persone -->
+                        <td>{{ aula.latitudine|floatformat:4 }}</td>       <!-- Arrotonda a 4 decimali -->
+                        <td>{{ aula.longitudine|floatformat:4 }}</td>      <!-- Arrotonda a 4 decimali -->
+                        <td>{{ aula.bestroom }}</td>                       <!-- Best Room (1 o 0) -->
+                        <td>{{ aula.rating|floatformat:1 }}</td>           <!-- Rating arrotondato -->
                     </tr>
                 {% endfor %}
             </tbody>

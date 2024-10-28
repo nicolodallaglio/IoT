@@ -47,32 +47,37 @@ def predict_view(request):
             if input_data.empty:
                 return JsonResponse({"error": "Empty input data provided"}, status=400)
 
-            # Usa la funzione predict_occupancy per fare previsioni
-            probabilities, predicted_classes = predict_and_sort_rooms(input_data)
+            # Usa la funzione predict_and_sort_rooms per fare previsioni e ordinare le stanze
+            sorted_rooms = predict_and_sort_rooms(input_data)
 
-            # Cicla attraverso i dati e le previsioni, e salva ogni stanza nel database
-            for i, row in input_data.iterrows():
+            # Cicla attraverso i dati e le previsioni ordinate, e salva ogni stanza nel database
+            for i, row in sorted_rooms.iterrows():
                 Room.objects.create(
-                    name=f"Room {i + 1}",
-                    temperature=row['Temperature'],
-                    humidity=row['Humidity'],
-                    light=row['Light'],
-                    co2=row['CO2'],
-                    humidity_ratio=row['HumidityRatio'],
-                    occupancy=predicted_classes[i]  # Salva la previsione di occupazione
+                    name=f"Room {i + 1}",  # Nome stanza generato dinamicamente
+                    temperature=row['Temperature'],  
+                    humidity=row['Humidity'], 
+                    light=row['Light_scaled'], 
+                    co2=row['CO2_scaled'],
+                    sound=row['Sound'],
+                    room_size=row['Room_Size'],
+                    people=row['People'],
+                    occupancy=row['predicted_class'],
+                    probability=row['probability']
                 )
 
-            # Restituisci il risultato come risposta JSON
+            # Prepara la risposta come JSON
             response = {
-                "probabilities": probabilities.tolist(),
-                "predicted_classes": predicted_classes.tolist()
+                "sorted_rooms": sorted_rooms[['Temperature', 'Humidity', 'Light', 'CO2', 'HumidityRatio', 'probability', 'predicted_class']].to_dict(orient='records')
             }
             return JsonResponse(response, status=200)
 
         except Exception as e:
+            # Gestione di qualsiasi eccezione
             return JsonResponse({"error": str(e)}, status=400)
 
+    # Risposta per metodi HTTP non validi
     return JsonResponse({"error": "Invalid request method. Only POST is allowed."}, status=405)
+
 
 
 # logica di regressione lineare per predire il prezzo dinamico delle stanze 
@@ -90,12 +95,11 @@ def index(request):
     greeting_message = "Benvenuto nel nostro progetto IoT 2024/2025"
     #url visualizzabili in main page
     other_urls = [
-        {'url': '/create_my_model/', 'label': 'Crea il mio modello'},
-        {'url': '/dati-seriale/', 'label': 'Dati seriali'},
-        {'url': '/save-data/', 'label': 'Salva dati'},
-        {'url': '/classifica/', 'label': 'Salva classifica'},
+        {'url': '/api/migliori-stanze/', 'label': 'api delle stanze per flutter'},
+        {'url': '/api/location/', 'label': 'api su cui il server riceve long e lat dell utente'},
+        {'url': '/api/receive_sensor_data/', 'label': 'api per caricare sensori arduino'},
         {'url': '/train/', 'label': 'Traina il modello'},
-        {'url': '/migliori-stanze/', 'label': 'Stanze'},
+        {'url': '/migliori-stanze/', 'label': 'Stanze Migliori'},
         # Aggiungi altri URL qui, se necessario
     ]
     #passiamo il mex al template e other urls
@@ -106,36 +110,51 @@ def index(request):
 # ----------------- ALGORITMO --------------------
 #algoritmo considererà vari criteri, come il prezzo, la disponibilità e il rating della stanza
 
-def find_optimal_room(max_price, min_rating):
-    rooms = Room.objects.filter(availability=True, price__lte=max_price, rating__gte=min_rating)
+def find_optimal_room():
+    # Recupera tutte le stanze
+    rooms = Room.objects.all()  
 
     if not rooms.exists():
         return None  # Nessuna stanza disponibile
 
-    def score_room(room):
-        price_weight = 0.4  # Peso del prezzo
-        rating_weight = 0.5  # Peso del rating
-        sensor_weight = 0.1  # Peso dei dati del sensore (ad es., temperatura, comfort)
+    def calculate_sensor_score(room):
+        # Calcola il punteggio combinato per i dati dei sensori (arrotondando a una cifra decimale)
+        sensor_score = (
+            (1 - abs(round(room.temperature, 1) - 22) / 10) +  # 22°C come valore ottimale per il comfort
+            (1 - abs(round(room.co2, 1) - 400) / 1000) +       # 400 ppm come valore ottimale per il comfort
+            (1 - abs(round(room.sound, 1) - 30) / 40) +        # 30 dB come valore ottimale per il comfort acustico
+            (round(room.light, 1) / 1000)                      # Normalizza la luce
+        ) / 4  # Media dei punteggi dei sensori
+        return sensor_score
 
-        # Normalizza il prezzo, rating e dati del sensore
-        price_score = (max_price - float(room.price)) / max_price  # Converti il prezzo in float
-        rating_score = room.rating / 5.0
-        sensor_score = room.sensor_data.get('comfort', 1) / 10.0  # supponendo un valore di comfort da 1 a 10
+    def calculate_rating(room):
+        # Calcola un rating basato sul rapporto qualità-prezzo e sui sensori
+        sensor_score = calculate_sensor_score(room)
+        # Normalizza il prezzo: assumendo che 50 sia il massimo prezzo
+        price_normalized = (50 - room.price) / 50
+        # Rating finale combinando comfort (sensori) e rapporto qualità-prezzo (80% sensori, 20% prezzo)
+        return 0.8 * sensor_score + 0.2 * price_normalized
 
-        # Calcola il punteggio finale
-        return price_weight * price_score + rating_weight * rating_score + sensor_weight * sensor_score
+    # Aggiungi il rating a ciascuna stanza e ordina in base a bestroom e rating
+    for room in rooms:
+        room.rating = calculate_rating(room)
 
-
-    rooms_sorted = sorted(rooms, key=score_room, reverse=True)
+    # Ordina prima per bestroom (1=ottimali) e poi per il rating in ordine decrescente
+    rooms_sorted = sorted(rooms, key=lambda r: (r.bestroom, r.rating), reverse=True)
     return rooms_sorted
 
-def mostra_migliori_stanze(request):
-    max_price = 1000  # Prezzo massimo predefinito
-    min_rating = 3    # Punteggio minimo predefinito
 
-    migliori_stanze = find_optimal_room(max_price, min_rating)
-    
+def mostra_migliori_stanze(request):
+    # Trova le stanze ottimali usando la logica dei sensori
+    migliori_stanze = find_optimal_room()
+
+    # Se non ci sono stanze disponibili, mostra un messaggio di errore
+    if not migliori_stanze:
+        return render(request, 'migliori_stanze.html', {'errore': 'Non ci sono stanze disponibili.'})
+
+    # Passa le stanze ottimali al template per essere visualizzate
     return render(request, 'migliori_stanze.html', {'aule': migliori_stanze})
+
 
 
 # --------- ARDUINO BRIDGE ------------
@@ -144,8 +163,10 @@ def mostra_migliori_stanze(request):
 def receive_sensor_data(request):
     if request.method == 'POST':
         try:
-            data = json.loads(request.body)  # Carica i dati JSON inviati
+            # Carica i dati JSON inviati
+            data = json.loads(request.body)  
             
+            # Estrai i dati dai sensori
             temperature = data.get('temperature')
             humidity = data.get('humidity')
             light_scaled = data.get('light_scaled')
@@ -154,14 +175,37 @@ def receive_sensor_data(request):
             room_size = data.get('room_size')
             people = data.get('people')
 
-            # Stampa i dati ricevuti per verificare
+            # Verifica che i dati siano presenti
+            if not all([temperature, humidity, light_scaled, co2_scaled, sound, room_size, people]):
+                return JsonResponse({"error": "Missing data fields"}, status=400)
+
+            # Stampa i dati ricevuti per verifica
             print(f"Received data: Temperature={temperature}, Humidity={humidity}, Light_scaled={light_scaled}, CO2_scaled={co2_scaled}, Sound={sound}, Room_Size={room_size}, People={people}")
 
-            return JsonResponse({"status": "success", "data_received": data}, status=200)
+            # Crea una nuova stanza nel database
+            new_room = Room.objects.create(
+                temperature=temperature,
+                humidity=humidity,
+                light=light_scaled,
+                co2=co2_scaled,
+                sound=sound,
+                room_size=room_size,
+                people=people,
+                # Puoi assegnare un valore di default per name o generarlo
+                name=f"New Room {Room.objects.count() + 1}",
+                price=0  # Imposta un valore iniziale o usa una logica personalizzata
+            )
+
+            # Salva la stanza nel database
+            new_room.save()
+
+            return JsonResponse({"status": "success", "new_room_id": new_room.id}, status=200)
+
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
 
     return JsonResponse({"error": "Invalid request method"}, status=405)
+
 
 # --------- API FLUTTER ------------
 
@@ -173,15 +217,15 @@ class RoomViewSet(viewsets.ModelViewSet):
 
 
 # Nuova vista API per Flutter che restituisce le migliori aule in formato JSON
+from django.http import JsonResponse
+
+# Nuova vista API per Flutter che restituisce le migliori aule in formato JSON
 def api_migliori_stanze(request):
-    # Parametri predefiniti o puoi permettere all'app Flutter di passarli come GET params
-    max_price = float(request.GET.get('max_price', 1000))
-    min_rating = float(request.GET.get('min_rating', 3))
+    # Trova le migliori stanze utilizzando la funzione find_optimal_room
+    migliori_stanze = find_optimal_room()
 
-    # Trova le migliori stanze utilizzando la tua logica esistente
-    migliori_stanze = Room.objects.filter(availability=True, price__lte=max_price, rating__gte=min_rating).order_by('-rating')
-
-    if not migliori_stanze.exists():
+    # Verifica se ci sono stanze disponibili
+    if not migliori_stanze:
         return JsonResponse({'error': 'No rooms available'}, status=404)
 
     # Prepara i dati in formato JSON
@@ -189,15 +233,25 @@ def api_migliori_stanze(request):
     for room in migliori_stanze:
         rooms_data.append({
             'name': room.name,
-            'posizione': room.posizione,
-            'price': float(room.price),  # Converti Decimal in float
-            'rating': room.rating,
-            'availability': room.availability,
-            'sensor_data': room.sensor_data  # JSON compatibile
+            'price': round(room.price, 1),               # Prezzo arrotondato
+            'temperature': round(room.temperature, 1),   # Temperatura arrotondata
+            'humidity': round(room.humidity, 1),         # Umidità arrotondata
+            'light': round(room.light, 1),               # Luce arrotondata
+            'co2': round(room.co2, 1),                   # CO2 arrotondato
+            'sound': round(room.sound, 1),               # Rumore arrotondato
+            'room_size': round(room.room_size, 1),       # Dimensione stanza arrotondata
+            'people': room.people,                       # Numero di persone
+            'probability': round(room.probability, 1),   # Probabilità arrotondata
+            'latitudine': round(room.latitudine, 5),     # Latitudine arrotondata
+            'longitudine': round(room.longitudine, 5),   # Longitudine arrotondata
+            'bestroom': room.bestroom,                   # Se è una delle migliori stanze
+            'rating': round(room.rating, 1)              # Rating arrotondato
         })
 
     # Restituisci la lista di aule come JSON
     return JsonResponse({'rooms': rooms_data})
+
+
 
 
 #posizione

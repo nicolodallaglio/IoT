@@ -8,5 +8,19 @@ from .models import Room
 class RoomSerializer(serializers.ModelSerializer):
     class Meta:
         model = Room
-        fields = ['name', 'price', 'posizione','rating', 'availability', 'sensor_data']
+        fields = [
+            'name',          # Nome della stanza
+            'price',
+            'co2',           # Livello di CO2
+            'humidity',      # Umidità
+            'latitudine',    # Latitudine della stanza
+            'longitudine',   # Longitudine della stanza
+            'light',         # Livello di luce
+            'temperature',   # Temperatura
+            'people',        # Numero di persone
+            'probability',   # Probabilità della migliore stanza
+            'room_size',     # Dimensione della stanza
+            'sound',         # Rumore nella stanza
+            'bestroom',      # Campo per indicare se è la migliore stanza
+        ]
 
