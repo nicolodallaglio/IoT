@@ -252,9 +252,8 @@ def api_migliori_stanze(request):
     return JsonResponse({'rooms': rooms_data})
 
 
-
-
 #posizione
+@csrf_exempt
 def receive_location_data(request):
     if request.method == 'POST':
         try:
@@ -262,16 +261,17 @@ def receive_location_data(request):
             data = json.loads(request.body)
 
             # Estrai longitudine e latitudine dai dati
-            longitude = data.get('longitude')
             latitude = data.get('latitude')
+            longitude = data.get('longitude')
+            
 
             if longitude is None or latitude is None:
-                return JsonResponse({"error": "Longitude and latitude are required"}, status=400)
+                return JsonResponse({"error": "latitude and Longitude are required"}, status=400)
 
             # Qui puoi salvare i dati nel database o processarli come necessario
-            print(f"Received location: Longitude={longitude}, Latitude={latitude}")
+            print(f"Received location: Latitude={latitude}, Longitude={longitude}")
 
-            return JsonResponse({"status": "success", "longitude": longitude, "latitude": latitude}, status=200)
+            return JsonResponse({"status": "success", "latitude": latitude, "longitude": longitude}, status=200)
         
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
