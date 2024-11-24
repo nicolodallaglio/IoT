@@ -92,7 +92,7 @@ def predici_prezzo(input_data):
 
 def index(request):
     #mex di saluto
-    greeting_message = "Benvenuto nel nostro progetto IoT 2024/2025"
+    greeting_message = "Benvenuto in SmartRooms"
     #url visualizzabili in main page
     other_urls = [
         {'url': '/api/migliori-stanze/', 'label': 'api delle stanze per flutter'},
@@ -163,33 +163,43 @@ def mostra_migliori_stanze(request):
 def receive_sensor_data(request):
     if request.method == 'POST':
         try:
+            if request.content_type != 'application/json':
+                return JsonResponse({"error": "Content-Type must be application/json"}, status=400)
+            
+            print(request.body)
             # Carica i dati JSON inviati
             data = json.loads(request.body)  
             
+            # { 'Light': 0, 'lightSensor': 438, 'Quality': 167, 'temperature': 23, 'humidity': 58, 'sound': 11, 'people': 0}
             # Estrai i dati dai sensori
-            temperature = data.get('temperature')
-            humidity = data.get('humidity')
-            light_scaled = data.get('light_scaled')
-            co2_scaled = data.get('co2_scaled')
-            sound = data.get('sound')
-            room_size = data.get('room_size')
-            people = data.get('people')
+            light = data[0][0]
+            light_scaled = data[1]
+            co2_scaled = data[2]
+            temperature = data[3]
+            humidity = data[4]
+            sound = data[5]
+            #room_size = data.get('room_size')
+            people = data[6]
 
             # Verifica che i dati siano presenti
-            if not all([temperature, humidity, light_scaled, co2_scaled, sound, room_size, people]):
+            if not all([temperature, light, humidity, light_scaled, co2_scaled, sound, people]):
                 return JsonResponse({"error": "Missing data fields"}, status=400)
 
             # Stampa i dati ricevuti per verifica
-            print(f"Received data: Temperature={temperature}, Humidity={humidity}, Light_scaled={light_scaled}, CO2_scaled={co2_scaled}, Sound={sound}, Room_Size={room_size}, People={people}")
+            print(f"Received data: Temperature={temperature}, Humidity={humidity}, Light_scaled={light_scaled}, CO2_scaled={co2_scaled}, Sound={sound}, People={people}")
 
-            # Crea una nuova stanza nel database
+            #QUI CI SARA' DA FARE LE PREDIZIONI
+            
+
+            #INSERIRE NEL DATABASE
+            """# Crea una nuova stanza nel database
             new_room = Room.objects.create(
                 temperature=temperature,
                 humidity=humidity,
                 light=light_scaled,
                 co2=co2_scaled,
                 sound=sound,
-                room_size=room_size,
+                #room_size=room_size,
                 people=people,
                 # Puoi assegnare un valore di default per name o generarlo
                 name=f"New Room {Room.objects.count() + 1}",
@@ -197,10 +207,12 @@ def receive_sensor_data(request):
             )
 
             # Salva la stanza nel database
-            new_room.save()
+            new_room.save()"""
 
-            return JsonResponse({"status": "success", "new_room_id": new_room.id}, status=200)
+            return JsonResponse({"status": "success"}, status=200)
 
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON format"}, status=400)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
 
