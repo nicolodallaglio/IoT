@@ -163,60 +163,104 @@ def mostra_migliori_stanze(request):
 def receive_sensor_data(request):
     if request.method == 'POST':
         try:
+            # Debug: stampa il corpo della richiesta
+            print("Raw request body:", request.body)
+            
+            # Verifica il Content-Type
             if request.content_type != 'application/json':
                 return JsonResponse({"error": "Content-Type must be application/json"}, status=400)
-            
-            print(request.body)
-            # Carica i dati JSON inviati
-            data = json.loads(request.body)  
-            
-            # { 'Light': 0, 'lightSensor': 438, 'Quality': 167, 'temperature': 23, 'humidity': 58, 'sound': 11, 'people': 0}
-            # Estrai i dati dai sensori
-            light = data[0][0]
-            light_scaled = data[1]
-            co2_scaled = data[2]
-            temperature = data[3]
-            humidity = data[4]
-            sound = data[5]
-            #room_size = data.get('room_size')
-            people = data[6]
 
-            # Verifica che i dati siano presenti
-            if not all([temperature, light, humidity, light_scaled, co2_scaled, sound, people]):
+            # Carica i dati JSON inviati
+            data = json.loads(request.body)
+
+            # Estrai i dati dai sensori e il nome del bridge
+            bridge_name = data.get('bridge_name', 'bridge_stanza1_piano1')  # Nome del bridge con valore predefinito
+            temperature = data.get('temperature')
+            humidity = data.get('humidity')
+            light_scaled = data.get('lightSensor')
+            co2_scaled = data.get('Quality')
+            sound = data.get('sound')
+            people = data.get('people', 0)  # Valore predefinito se non fornito
+            room_size = data.get('room_size', 25)  # Valore predefinito
+            latitudine = data.get('latitudine', 44.62902432803542)  
+            longitudine = data.get('longitudine', 10.94885144130329)
+            price = data.get('price', 0)  # Valore predefinito
+            room_type = data.get('type', 'studio')  # Tipo di stanza predefinito
+
+            # Verifica che tutti i dati necessari siano presenti
+            if not all(v is not None for v in [temperature, humidity, light_scaled, co2_scaled, sound]):
                 return JsonResponse({"error": "Missing data fields"}, status=400)
 
-            # Stampa i dati ricevuti per verifica
-            print(f"Received data: Temperature={temperature}, Humidity={humidity}, Light_scaled={light_scaled}, CO2_scaled={co2_scaled}, Sound={sound}, People={people}")
+            # Prepara i dati per la predizione
+            input_data = pd.DataFrame([{
+                'Temperature': temperature,
+                'Humidity': humidity,
+                'Light_scaled': light_scaled,
+                'CO2_scaled': co2_scaled,
+                'Sound': sound,
+                'Room_Size': room_size,
+                'People': people
+            }])
 
-            #QUI CI SARA' DA FARE LE PREDIZIONI
-            
+            # Predici se la stanza è ottimale
+            try:
+                print("Dati ricevuti per la predizione:", input_data)
 
-            #INSERIRE NEL DATABASE
-            """# Crea una nuova stanza nel database
-            new_room = Room.objects.create(
-                temperature=temperature,
-                humidity=humidity,
-                light=light_scaled,
-                co2=co2_scaled,
-                sound=sound,
-                #room_size=room_size,
-                people=people,
-                # Puoi assegnare un valore di default per name o generarlo
-                name=f"New Room {Room.objects.count() + 1}",
-                price=0  # Imposta un valore iniziale o usa una logica personalizzata
+                # Predici se la stanza è ottimale
+                prediction = predict_and_sort_rooms(input_data)
+                print("Risultato della predizione:", prediction)
+
+                bestroom_prediction = int(prediction.iloc[0]['predicted_class'])  # 0 = non ottimale, 1 = ottimale
+                probability = float(prediction.iloc[0]['probability'])
+                print(f"Predizione: BestRoom={bestroom_prediction}, Probabilità={probability}")
+            except Exception as e:
+                return JsonResponse({"error": f"Prediction error: {str(e)}"}, status=500)
+
+            # Aggiorna o crea la stanza nel database
+            print("Aggiorno/creo la stanza nel database...")
+            room, created = Room.objects.update_or_create(
+                bridge=bridge_name,  # Cerca una stanza con questo bridge
+                defaults={  # Se esiste, aggiorna questi campi
+                    'name': bridge_name,  # Può essere personalizzato
+                    'temperature': temperature,
+                    'humidity': humidity,
+                    'light': light_scaled,
+                    'co2': co2_scaled,
+                    'sound': sound,
+                    'room_size': room_size,
+                    'people': people,
+                    'latitudine': latitudine,
+                    'longitudine': longitudine,
+                    'price': price,
+                    'type': room_type,
+                    'bestroom': bestroom_prediction,
+                    'probability': probability
+                }
             )
 
-            # Salva la stanza nel database
-            new_room.save()"""
+            # Risposta in caso di successo
+            if created:
+                message = f"New room created: {room.name}"
+            else:
+                message = f"Room updated: {room.name}"
 
-            return JsonResponse({"status": "success"}, status=200)
+            return JsonResponse({
+                "status": "success",
+                "message": message,
+                "room_id": room.id,
+                "bestroom": bestroom_prediction,
+                "probability": probability
+            }, status=200)
 
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON format"}, status=400)
         except Exception as e:
-            return JsonResponse({"error": str(e)}, status=400)
+            return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Invalid request method"}, status=405)
+
+
+
 
 
 # --------- API FLUTTER ------------

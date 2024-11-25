@@ -30,23 +30,29 @@ class Calendario(models.Model):
 
 #definisci i modelli per rappresentare le stanze e le relative informazioni (ranking, prezzo, ecc.)
 class Room(models.Model):
+    bridge = models.CharField(max_length=100, unique=True, null=True, blank=True)  # Campo per identificare il bridge
     name = models.CharField(max_length=100)
     type = models.CharField(max_length=100, default='studio')
     price = models.FloatField(default=0)
+
     temperature = models.FloatField(default=0)
     humidity = models.FloatField(default=0)
     light = models.FloatField(default=0)
     co2 = models.FloatField(default=0)
     sound = models.FloatField(default=0)
-    room_size = models.FloatField(default=0)
-    people = models.IntegerField(default=0)
-    bestroom = models.IntegerField(default=0)
-    probability = models.FloatField(default=0)
+
     latitudine = models.FloatField(default=0)
     longitudine = models.FloatField(default=0)
+    room_size = models.FloatField(default=0)
+    people = models.IntegerField(default=0)
+    
+    bestroom = models.IntegerField(default=0)
+    probability = models.FloatField(default=0)
+    
 
     def __str__(self):
         return self.name
+
 
 class Booking(models.Model):
     room = models.ForeignKey(Room, on_delete=models.CASCADE)
