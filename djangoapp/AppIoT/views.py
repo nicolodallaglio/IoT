@@ -7,12 +7,124 @@ from django.views import View
 from django.views.generic import ListView
 from django.shortcuts import render
 from .ml_model.ml_model import train_model, predict_and_sort_rooms
+from AppIoT.adafruit.adafruit_client import send_room_data_to_adafruit
+from AppIoT.utils import check_and_notify_adjacent_rooms
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets
 from .serializers import RoomSerializer
 from rest_framework import viewsets
 
 from .models import Room
+
+# -------------------- Sync room to cloud --------------------
+# API che aggiorna lo stato delle stanze e lo invia al cloud
+@csrf_exempt
+def sync_rooms_to_cloud(request):
+    if request.method == 'GET':
+        # Ottieni tutte le stanze attive
+        rooms = Room.objects.filter(online_status=True)
+        
+        if not rooms.exists():
+            return JsonResponse({'error': 'No online rooms available'}, status=404)
+
+        # Prepara i dati delle stanze
+        rooms_data = []
+        for room in rooms:
+            rooms_data.append({
+                'bridge': room.bridge,
+                'name': room.name,
+                'temperature': room.temperature,
+                'humidity': room.humidity,
+                'light': room.light,
+                'co2': room.co2,
+                'sound': room.sound,
+                'room_size': room.room_size,
+                'people': room.people,
+                'latitudine': room.latitudine,
+                'longitudine': room.longitudine,
+                'price': room.price,
+                'type': room.type,
+                'bestroom': room.bestroom,
+                'probability': room.probability,
+                'last_update': room.last_update.isoformat()
+            })
+
+        # Simuliamo la sincronizzazione al cloud (qui potresti chiamare un'API esterna come Adafruit.io)
+        print("Syncing rooms to cloud:", rooms_data)
+
+        return JsonResponse({'status': 'success', 'synced_rooms': rooms_data}, status=200)
+
+    return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)
+
+# -------------------- API consente alle stanze di comunicare tra loro --------------------
+@csrf_exempt
+def room_interaction(request):
+    if request.method == 'POST':
+        try:
+            # Ricevi i dati JSON
+            data = json.loads(request.body)
+            room_from_id = data.get('room_from')
+            room_to_id = data.get('room_to')
+            interaction_data = data.get('data_transferred', '')
+
+            # Verifica se le stanze esistono
+            room_from = Room.objects.get(id=room_from_id)
+            room_to = Room.objects.get(id=room_to_id)
+
+            # Registra l'interazione
+            interaction = InteractionLog.objects.create(
+                room_from=room_from,
+                room_to=room_to,
+                data_transferred=interaction_data
+            )
+
+            return JsonResponse({"status": "success", "message": "Interaction recorded", "interaction_id": interaction.id}, status=200)
+
+        except Room.DoesNotExist:
+            return JsonResponse({"error": "One or both rooms do not exist"}, status=404)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON format"}, status=400)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
+    return JsonResponse({"error": "Invalid request method. Only POST is allowed."}, status=405)
+
+
+# -------------------- API per recuperare i dati delle stanze dal cloud --------------------
+@csrf_exempt
+def get_adafruit_data(request, room_name):
+    if request.method == 'GET':
+        try:
+            room_prefix = room_name.replace(" ", "-").lower()
+
+            temperature = aio.receive(f'{room_prefix}.temperature').value
+            humidity = aio.receive(f'{room_prefix}.humidity').value
+            co2 = aio.receive(f'{room_prefix}.co2').value
+            light = aio.receive(f'{room_prefix}.light').value
+            sound = aio.receive(f'{room_prefix}.sound').value
+            occupancy = aio.receive(f'{room_prefix}.occupancy').value
+            bestroom = aio.receive(f'{room_prefix}.bestroom').value
+            room_status = aio.receive(f'{room_prefix}.room-status').value
+
+            return JsonResponse({
+                "room": room_name,
+                "temperature": temperature,
+                "humidity": humidity,
+                "co2": co2,
+                "light": light,
+                "sound": sound,
+                "occupancy": occupancy,
+                "bestroom": bestroom,
+                "room_status": room_status
+            }, status=200)
+
+        except Exception as e:
+            return JsonResponse({"error": f"Error retrieving Adafruit IO data: {str(e)}"}, status=500)
+
+    return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)
+
+
+
 
 # -------------------- ML --------------------
 #TRAIN ML
@@ -158,7 +270,7 @@ def mostra_migliori_stanze(request):
 
 
 # --------- ARDUINO BRIDGE ------------
-
+# Il server Django riceve i dati da Arduino e aggiorna il database. Subito dopo, invia i dati su Adafruit IO.
 @csrf_exempt
 def receive_sensor_data(request):
     if request.method == 'POST':
@@ -234,7 +346,8 @@ def receive_sensor_data(request):
                     'price': price,
                     'type': room_type,
                     'bestroom': bestroom_prediction,
-                    'probability': probability
+                    'probability': probability,
+                    'online_status': True
                 }
             )
 
@@ -243,6 +356,12 @@ def receive_sensor_data(request):
                 message = f"New room created: {room.name}"
             else:
                 message = f"Room updated: {room.name}"
+
+            # **Ora inviamo i dati a Adafruit IO**
+            send_room_data_to_adafruit(room)
+
+            #Interazione tra stanze (es. suggerisci alternative se CO₂ alta)
+            check_and_notify_adjacent_rooms(room)
 
             return JsonResponse({
                 "status": "success",

@@ -1,36 +1,7 @@
 from django.db import models
 
-class Venditore(models.Model):
-    nome = models.CharField(max_length=255)
-    pubblica = models.BooleanField(default=False)  # Pubblico o privato
-    
-    def __str__(self):
-        return self.nome
-
-class Bridge(models.Model):
-    venditore = models.ForeignKey(Venditore, on_delete=models.CASCADE)
-    nome = models.CharField(max_length=255)
-    descrizione = models.TextField(null=True, blank=True)  # Dettagli aggiuntivi sul bridge
-
-    def __str__(self):
-        return f"{self.nome} - {self.venditore.nome}"
-
-class Utente(models.Model):
-    nome = models.CharField(max_length=255)
-    cognome = models.CharField(max_length=255)
-    nascita = models.DateField()
-    carta_di_pagamento = models.CharField(max_length=16)
-    stato = models.CharField(max_length=50, choices=[('studente', 'Studente'), ('relatore', 'Relatore di Conferenze')])
-
-class Calendario(models.Model):
-    utente = models.ForeignKey(Utente, on_delete=models.CASCADE)
-    evento = models.CharField(max_length=255)
-    data_evento = models.DateTimeField()
-
-
-#definisci i modelli per rappresentare le stanze e le relative informazioni (ranking, prezzo, ecc.)
 class Room(models.Model):
-    bridge = models.CharField(max_length=100, unique=True, null=True, blank=True)  # Campo per identificare il bridge
+    bridge = models.CharField(max_length=100, unique=True, null=True, blank=True)  # Identificativo IoT
     name = models.CharField(max_length=100)
     type = models.CharField(max_length=100, default='studio')
     price = models.FloatField(default=0)
@@ -45,20 +16,39 @@ class Room(models.Model):
     longitudine = models.FloatField(default=0)
     room_size = models.FloatField(default=0)
     people = models.IntegerField(default=0)
-    
+
     bestroom = models.IntegerField(default=0)
     probability = models.FloatField(default=0)
+
+    online_status = models.BooleanField(default=False)  # Indica se la stanza è attiva nel cloud
+    last_update = models.DateTimeField(auto_now=True)   # Ultima sincronizzazione
     
+    adjacent_rooms = models.ManyToManyField("self", blank=True)  # Connessioni tra stanze
 
     def __str__(self):
         return self.name
 
+class InteractionLog(models.Model):
+    room_from = models.ForeignKey(Room, related_name="interactions_from", on_delete=models.CASCADE)
+    room_to = models.ForeignKey(Room, related_name="interactions_to", on_delete=models.CASCADE)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    data_transferred = models.TextField()  # Informazioni scambiate tra le stanze
 
-class Booking(models.Model):
-    room = models.ForeignKey(Room, on_delete=models.CASCADE)
-    start_date = models.DateField()
-    end_date = models.DateField()
-    user = models.CharField(max_length=255)
-    
     def __str__(self):
-        return f"{self.room.name} - {self.user}"
+        return f"Interaction from {self.room_from.name} to {self.room_to.name} at {self.timestamp}"
+    
+class Venditore(models.Model):
+    nome = models.CharField(max_length=255)
+    pubblica = models.BooleanField(default=False)  # Pubblico o privato
+
+    def __str__(self):
+        return self.nome
+
+class Bridge(models.Model):
+    nome = models.CharField(max_length=255)
+    descrizione = models.TextField(null=True, blank=True)  # Dettagli aggiuntivi sul bridge
+
+    def __str__(self):
+        return self.nome
+
+

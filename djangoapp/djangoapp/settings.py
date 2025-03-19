@@ -4,6 +4,8 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+ADAFRUIT_AIO_USERNAME = "nicodalla99"
+ADAFRUIT_AIO_KEY      = "aio_iAYf47nIRLwS7SO020RyP3thGnNn"
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
@@ -12,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = '+=qcplywafira(ydri0pz4^pe&w)-p$305c8kyy_)5bt#q&-=-'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 ALLOWED_HOSTS = ['nicodalla.pythonanywhere.com', '127.0.0.1', 'localhost', '95.251.170.96','smartrooms.ddns.net', "109.54.166.184"]
 
 

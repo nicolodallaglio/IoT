@@ -26,6 +26,11 @@
                     <th>Longitudine</th>
                     <th>Best Room</th>
                     <th>Rating</th>
+                    <th>Bridge</th>
+                    <th>Probabilità</th>
+                    <th>Stato Online</th>
+                    <th>Ultimo Aggiornamento</th>
+                    <th>Stanze Adiacenti</th>
                 </tr>
             </thead>
             <tbody>
@@ -34,17 +39,28 @@
                         <td>{{ aula.name }}</td>
                         <td>{{ aula.type }}</td>
                         <td>{{ aula.price|floatformat:1 }} €</td>
-                        <td>{{ aula.temperature|floatformat:1 }} °C</td>  <!-- Arrotonda a 1 decimale -->
-                        <td>{{ aula.co2|floatformat:1 }} ppm</td>          <!-- Arrotonda a 1 decimale -->
-                        <td>{{ aula.sound|floatformat:1 }} dB</td>         <!-- Arrotonda a 1 decimale -->
-                        <td>{{ aula.light|floatformat:1 }} lux</td>        <!-- Arrotonda a 1 decimale -->
-                        <td>{{ aula.humidity|floatformat:1 }}%</td>        <!-- Arrotonda a 1 decimale -->
-                        <td>{{ aula.room_size|floatformat:1 }} m²</td>     <!-- Arrotonda a 1 decimale -->
-                        <td>{{ aula.people }}</td>                         <!-- Mostra il numero di persone -->
-                        <td>{{ aula.latitudine|floatformat:4 }}</td>       <!-- Arrotonda a 4 decimali -->
-                        <td>{{ aula.longitudine|floatformat:4 }}</td>      <!-- Arrotonda a 4 decimali -->
-                        <td>{{ aula.bestroom }}</td>                       <!-- Best Room (1 o 0) -->
-                        <td>{{ aula.rating|floatformat:1 }}</td>           <!-- Rating arrotondato -->
+                        <td>{{ aula.temperature|floatformat:1 }} °C</td>
+                        <td>{{ aula.co2|floatformat:1 }} ppm</td>
+                        <td>{{ aula.sound|floatformat:1 }} dB</td>
+                        <td>{{ aula.light|floatformat:1 }} lux</td>
+                        <td>{{ aula.humidity|floatformat:1 }}%</td>
+                        <td>{{ aula.room_size|floatformat:1 }} m²</td>
+                        <td>{{ aula.people }}</td>
+                        <td>{{ aula.latitudine|floatformat:4 }}</td>
+                        <td>{{ aula.longitudine|floatformat:4 }}</td>
+                        <td>{{ aula.bestroom }}</td>
+                        <td>{{ aula.rating|floatformat:1 }}</td>
+                        <td>{{ aula.bridge }}</td>
+                        <td>{{ aula.probability|floatformat:2 }}</td>
+                        <td>{% if aula.online_status %} ✅ Online {% else %} ❌ Offline {% endif %}</td>
+                        <td>{{ aula.last_update }}</td>
+                        <td>
+                            {% for adjacent in aula.adjacent_rooms.all %}
+                                {{ adjacent.name }}{% if not forloop.last %}, {% endif %}
+                            {% empty %}
+                                Nessuna
+                            {% endfor %}
+                        </td>
                     </tr>
                 {% endfor %}
             </tbody>
