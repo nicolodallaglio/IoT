@@ -11,12 +11,13 @@ django.setup()
 from AppIoT.models import Room
 
 # Percorso del file CSV
-csv_file_path = r'C:\Users\dalla\Desktop\Project\Dataset\dataset.csv'
+csv_file_path = r'C:\Users\Nicolò\Documents\IoT2025\dataset.csv'
+
 
 # Carica il CSV in un DataFrame Pandas
 df = pd.read_csv(csv_file_path)
 
-# Generatore di nomi realistici per le stanze
+# Generatore di nomi per le stanze
 prefixes = ["Sala", "Aula", "Laboratorio", "Stanza", "Sala Riunioni", "Ufficio", "Centro", "Spazio", "Studio", "Biblioteca"]
 adjectives = ["Grande", "Piccola", "Conferenze", "Tecnica", "Magna", "Didattica", "Informatica", "Multimedia", "Polifunzionale"]
 suffixes = ["I", "II", "III", "IV", "V", "Alfa", "Beta", "Gamma", "Delta", "Omega","1.1","1.2","1.3","2.1","2.2","2.3"]
@@ -29,8 +30,13 @@ def generate_room_name():
 
 # Cicla attraverso ogni riga del DataFrame e crea un'istanza di Room
 for index, row in df.iterrows():
+    room_name = generate_room_name()  # Genera il nome della stanza
+    room_type = 'lavoro' if any(x in room_name for x in ["Sala Riunioni", "Ufficio", "Centro"]) else 'studio'
+
     Room.objects.create(
-        name=generate_room_name(),  # Genera il nome in modo casuale
+        bridge='empty',  # bridge 'empty' per indicare che questa stanza serve solo per la predizione
+        name=room_name,  # Usa il nome generato
+        type=room_type,  # Assegna il tipo di stanza in base al nome
         price=random.uniform(0, 50),  # Assegna un prezzo casuale tra 0 e 50 euro
         temperature=row['Temperature'],
         humidity=row['Humidity'],
@@ -40,7 +46,8 @@ for index, row in df.iterrows():
         room_size=row['Room_Size'],
         people=row['People'],
         bestroom=row['BestRoom'],
-        probability=0  # Imposta a 0 o un altro valore se necessario
+        probability=0,  # Imposta a 0 o un altro valore se necessario
+        updated=False  # Indica che la stanza non è stata ancora aggiornata
     )
 
 print("Database popolato con successo!")

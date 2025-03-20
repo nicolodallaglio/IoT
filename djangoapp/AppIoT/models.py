@@ -1,9 +1,9 @@
 from django.db import models
 
 class Room(models.Model):
-    bridge = models.CharField(max_length=100, unique=True, null=True, blank=True)  # Identificativo IoT
+    bridge = models.CharField(max_length=100, null=True, blank=True)  # Identificativo IoT
     name = models.CharField(max_length=100)
-    type = models.CharField(max_length=100, default='studio')
+    type = models.CharField(max_length=100, default='generico')
     price = models.FloatField(default=0)
 
     temperature = models.FloatField(default=0)

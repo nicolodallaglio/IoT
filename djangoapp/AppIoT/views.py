@@ -212,7 +212,6 @@ def index(request):
         {'url': '/api/receive_sensor_data/', 'label': 'api per caricare sensori arduino'},
         {'url': '/train/', 'label': 'Traina il modello'},
         {'url': '/migliori-stanze/', 'label': 'Stanze Migliori'},
-        # Aggiungi altri URL qui, se necessario
     ]
     #passiamo il mex al template e other urls
     return render(request,'index.html', {'greeting_message': greeting_message, 'other_urls': other_urls})
@@ -251,9 +250,10 @@ def find_optimal_room():
     for room in rooms:
         room.rating = calculate_rating(room)
 
-    # Ordina prima per bestroom (1=ottimali) e poi per il rating in ordine decrescente
-    rooms_sorted = sorted(rooms, key=lambda r: (r.bestroom, r.rating), reverse=True)
+    # Ordina prima per Online, bestroom (1=ottimali) e poi per il rating in ordine decrescente
+    rooms_sorted = sorted(rooms, key=lambda r: (r.online_status, r.bestroom, r.rating), reverse=True)
     return rooms_sorted
+
 
 
 def mostra_migliori_stanze(request):
@@ -286,7 +286,7 @@ def receive_sensor_data(request):
             data = json.loads(request.body)
 
             # Estrai i dati dai sensori e il nome del bridge
-            bridge_name = data.get('bridge_name', 'bridge_stanza1_piano1')  # Nome del bridge con valore predefinito
+            bridge_name = data.get('bridge_name', 'bridge_piano1')  # Nome del bridge con valore predefinito
             temperature = data.get('temperature')
             humidity = data.get('humidity')
             light_scaled = data.get('lightSensor')
@@ -297,7 +297,7 @@ def receive_sensor_data(request):
             latitudine = data.get('latitudine', 44.62902432803542)  
             longitudine = data.get('longitudine', 10.94885144130329)
             price = data.get('price', 0)  # Valore predefinito
-            room_type = data.get('type', 'studio')  # Tipo di stanza predefinito
+            room_type = data.get('type', 'generico')  # Tipo di stanza predefinito
 
             # Verifica che tutti i dati necessari siano presenti
             if not all(v is not None for v in [temperature, humidity, light_scaled, co2_scaled, sound]):
