@@ -357,7 +357,7 @@ def receive_sensor_data(request):
             else:
                 message = f"Room updated: {room.name}"
 
-            # **Ora inviamo i dati a Adafruit IO**
+            # invio i dati a Adafruit IO
             send_room_data_to_adafruit(room)
 
             #Interazione tra stanze (es. suggerisci alternative se CO₂ alta)
