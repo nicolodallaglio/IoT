@@ -47,7 +47,7 @@ for index, row in df.iterrows():
         people=row['People'],
         bestroom=row['BestRoom'],
         probability=0,  # Imposta a 0 o un altro valore se necessario
-        updated=False  # Indica che la stanza non è stata ancora aggiornata
+        last_update=False  # Indica che la stanza non è stata ancora aggiornata
     )
 
 print("Database popolato con successo!")

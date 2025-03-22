@@ -14,9 +14,8 @@ ADAFRUIT_AIO_KEY      = "aio_iAYf47nIRLwS7SO020RyP3thGnNn"
 SECRET_KEY = '+=qcplywafira(ydri0pz4^pe&w)-p$305c8kyy_)5bt#q&-=-'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-ALLOWED_HOSTS = ['nicodalla.pythonanywhere.com', '127.0.0.1', 'localhost', '95.251.170.96','smartrooms.ddns.net', "109.54.166.184"]
-
+DEBUG = False
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '95.251.170.96','smartrooms.ddns.net', "109.54.166.184", "192.168.1.210", "87.17.47.6", "172.20.10.11"]
 
 # Application definition
 
@@ -51,6 +50,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://37.161.226.9",
     "http://smartrooms.ddns.net",
     "http://109.54.166.184",
+    "http://87.17.47.6",
+    "http://172.20.10.11",
 ]
 
 ROOT_URLCONF = 'djangoapp.urls'
@@ -79,7 +80,7 @@ WSGI_APPLICATION = 'djangoapp.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': BASE_DIR / 'db_IoT.sqlite3',
     }
 }
 
