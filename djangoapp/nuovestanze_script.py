@@ -4,7 +4,8 @@ import json
 url = "http://127.0.0.1:8000/api/receive_sensor_data/"
 
 data = {
-    "bridge_name": "bridge_piano13",
+    "bridge_name": "bridge_piano1",
+    "room_name": "Sala Conferenze I",
     "temperature": 27.5,
     "humidity": 90,
     "lightSensor": 300,
