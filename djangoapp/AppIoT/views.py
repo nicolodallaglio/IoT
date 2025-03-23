@@ -7,7 +7,6 @@ from django.views import View
 from django.views.generic import ListView
 from django.shortcuts import render
 from .ml_model.ml_model import train_model, predict_and_sort_rooms
-from AppIoT.adafruit.adafruit_client import send_room_data_to_adafruit
 from AppIoT.utils import check_and_notify_adjacent_rooms
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets
@@ -16,6 +15,11 @@ from rest_framework import viewsets
 
 from .models import Room
 
+from AppIoT.adafruit.adafruit_client import (
+    send_room_data_to_adafruit,
+    send_to_adafruit,
+    adafruit_room_mapping
+)
 
 # -------------------- ML --------------------
 #TRAIN ML
@@ -162,112 +166,125 @@ def mostra_migliori_stanze(request):
 # --------- ARDUINO BRIDGE ------------
 # Il server Django riceve i dati da Arduino e aggiorna il database. Subito dopo, invia i dati su Adafruit IO.
 
+# Funzione per generare lo stato della stanza
+def generate_status(room):
+    return {
+        "temperature": "HIGH" if room.temperature > 26 else "OK",
+        "humidity": "HIGH" if room.humidity > 60 else "OK",
+        "co2": "HIGH" if room.co2 > 1000 else "OK",
+        "light": "LOW" if room.light < 200 else "OK",
+        "sound": "HIGH" if room.sound > 50 else "OK"
+    }
+
+# Funzione per verificare e inviare alert se necessario
+def check_and_alert(room):
+    if room.temperature > 30:
+        alert_message = f"Alta temperatura nella {room.name}: {room.temperature}°C"
+        send_alert(alert_message)
+        print(alert_message)
+        adjacent_rooms = Room.objects.exclude(name=room.name)  # Stanze adiacenti
+        for adj_room in adjacent_rooms:
+            send_command_to_room(adj_room.name, {"action": "RAFFREDDA", "value": 20})
+
+# Controlla se tutte e tre le stanze del bridge sono aggiornate
+def check_bridge_completion(bridge_name):
+    rooms = Room.objects.filter(bridge=bridge_name)
+    return rooms.count() == 3 and all(room.online_status for room in rooms)
+
+# Mappa dinamica delle stanze su Adafruit
+def upload_bridge_to_adafruit(bridge_name):
+    rooms = Room.objects.filter(bridge=bridge_name)
+
+    if rooms.count() != 3:
+        print(f"❌ Errore: il bridge {bridge_name} non ha 3 stanze collegate.")
+        return
+
+    for i, room in enumerate(rooms):
+        # Imposta la posizione della stanza su Adafruit (1, 2, 3)
+        room.adafruit_position = i + 1
+        room.online_status = True
+        room.save()
+        send_room_data_to_adafruit(room, room.adafruit_position)
+
+    print(f"✅ Bridge {bridge_name} caricato correttamente su Adafruit.")
+
+# Endpoint per ricevere i dati dal bridge e salvarli nel database
+@csrf_exempt
 @csrf_exempt
 def receive_sensor_data(request):
     if request.method == 'POST':
         try:
-            # Debug: stampa il corpo della richiesta
-            print("Raw request body:", request.body)
-            
-            # Verifica il Content-Type
-            if request.content_type != 'application/json':
-                return JsonResponse({"error": "Content-Type must be application/json"}, status=400)
-
-            # Carica i dati JSON inviati
             data = json.loads(request.body)
-
-            # Estrai i dati dai sensori e il nome del bridge
-            bridge_name = data.get('bridge_name', 'bridge_piano1')  # Nome del bridge con valore predefinito
+            bridge_name = data.get('bridge_name', 'default_bridge')
+            room_name = data.get('room_name', 'default_room')
             temperature = data.get('temperature')
             humidity = data.get('humidity')
-            light_scaled = data.get('lightSensor')
-            co2_scaled = data.get('Quality')
+            co2 = data.get('co2')
+            light = data.get('light')
             sound = data.get('sound')
-            people = data.get('people', 0)  # Valore predefinito se non fornito
-            room_size = data.get('room_size', 25)  # Valore predefinito
-            latitudine = data.get('latitudine', 44.62902432803542)  
+            people = data.get('people', 0)
+            room_size = data.get('room_size', 25)
+            latitudine = data.get('latitudine', 44.62902432803542)
             longitudine = data.get('longitudine', 10.94885144130329)
-            price = data.get('price', 0)  # Valore predefinito
-            room_type = data.get('type', 'generico')  # Tipo di stanza predefinito
+            price = data.get('price', 0)
 
-            # Verifica che tutti i dati necessari siano presenti
-            if not all(v is not None for v in [temperature, humidity, light_scaled, co2_scaled, sound]):
-                return JsonResponse({"error": "Missing data fields"}, status=400)
+            # Verifica dati mancanti
+            if not all([temperature, humidity, co2, light, sound]):
+                return JsonResponse({"error": "Dati mancanti"}, status=400)
 
-            # Prepara i dati per la predizione
-            input_data = pd.DataFrame([{
-                'Temperature': temperature,
-                'Humidity': humidity,
-                'Light_scaled': light_scaled,
-                'CO2_scaled': co2_scaled,
-                'Sound': sound,
-                'Room_Size': room_size,
-                'People': people
-            }])
-
-            # Predici se la stanza è ottimale
-            try:
-                print("Dati ricevuti per la predizione:", input_data)
-
-                # Predici se la stanza è ottimale
-                prediction = predict_and_sort_rooms(input_data)
-                print("Risultato della predizione:", prediction)
-
-                bestroom_prediction = int(prediction.iloc[0]['predicted_class'])  # 0 = non ottimale, 1 = ottimale
-                probability = float(prediction.iloc[0]['probability'])
-                print(f"Predizione: BestRoom={bestroom_prediction}, Probabilità={probability}")
-            except Exception as e:
-                return JsonResponse({"error": f"Prediction error: {str(e)}"}, status=500)
-
-            # Aggiorna o crea la stanza nel database
-            print("Aggiorno/creo la stanza nel database...")
+            # Crea o aggiorna la stanza nel database come Offline
             room, created = Room.objects.update_or_create(
-                bridge=bridge_name,  # Cerca una stanza con questo bridge
-                defaults={  # Se esiste, aggiorna questi campi
-                    'name': bridge_name,  # Può essere personalizzato
+                name=room_name,
+                bridge=bridge_name,
+                defaults={
                     'temperature': temperature,
                     'humidity': humidity,
-                    'light': light_scaled,
-                    'co2': co2_scaled,
+                    'co2': co2,
+                    'light': light,
                     'sound': sound,
                     'room_size': room_size,
                     'people': people,
                     'latitudine': latitudine,
                     'longitudine': longitudine,
                     'price': price,
-                    'type': room_type,
-                    'bestroom': bestroom_prediction,
-                    'probability': probability,
-                    'online_status': True
+                    'online_status': False  # Inizialmente Offline
                 }
             )
 
-            # Risposta in caso di successo
-            if created:
-                message = f"New room created: {room.name}"
-            else:
-                message = f"Room updated: {room.name}"
+            print(f"Stanza '{room_name}' associata al bridge '{bridge_name}' salvata come Offline.")
 
-            # invio i dati a Adafruit IO
-            send_room_data_to_adafruit(room)
+            # Controlla se ci sono 3 stanze con lo stesso bridge
+            rooms_same_bridge = Room.objects.filter(bridge=bridge_name)
 
-            #Interazione tra stanze (es. suggerisci alternative se CO₂ alta)
-            check_and_notify_adjacent_rooms(room)
+            if rooms_same_bridge.count() == 3:
+                print(f"🏠 Trovate 3 stanze con lo stesso bridge '{bridge_name}'. Preparazione invio a Adafruit...")
+                
+                # Manda i dati su Adafruit e marca come Online
+                for i, room in enumerate(rooms_same_bridge):
+                    position = i + 1  # Posizione da 1 a 3
+                    success = send_room_data_to_adafruit(room, position)
+                    if success:
+                        room.online_status = True
+                        room.adafruit_position = position
+                        room.save()
+                        print(f"✅ Stanza '{room.name}' inviata ad Adafruit come Online (Posizione {position}).")
+                    else:
+                        print(f"❌ Errore nell'invio della stanza '{room.name}' ad Adafruit.")
 
             return JsonResponse({
                 "status": "success",
-                "message": message,
-                "room_id": room.id,
-                "bestroom": bestroom_prediction,
-                "probability": probability
+                "message": f"Dati ricevuti da {room.name}",
+                "room_id": room.id
             }, status=200)
 
         except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON format"}, status=400)
+            return JsonResponse({"error": "Formato JSON non valido"}, status=400)
         except Exception as e:
+            print(f"Errore: {str(e)}")
             return JsonResponse({"error": str(e)}, status=500)
 
-    return JsonResponse({"error": "Invalid request method"}, status=405)
+    return JsonResponse({"error": "Metodo non valido. Solo POST consentito."}, status=405)
+
 
 
 
@@ -343,111 +360,3 @@ def receive_location_data(request):
             return JsonResponse({"error": str(e)}, status=400)
 
     return JsonResponse({"error": "Invalid request method. Only POST is allowed."}, status=405)
-
-
-# -------------------- Sync room to cloud --------------------
-# API che aggiorna lo stato delle stanze e lo invia al cloud
-@csrf_exempt
-def sync_rooms_to_cloud(request):
-    if request.method == 'GET':
-        # Ottieni tutte le stanze attive
-        rooms = Room.objects.filter(online_status=True)
-        
-        if not rooms.exists():
-            return JsonResponse({'error': 'No online rooms available'}, status=404)
-
-        # Prepara i dati delle stanze
-        rooms_data = []
-        for room in rooms:
-            rooms_data.append({
-                'bridge': room.bridge,
-                'name': room.name,
-                'temperature': room.temperature,
-                'humidity': room.humidity,
-                'light': room.light,
-                'co2': room.co2,
-                'sound': room.sound,
-                'room_size': room.room_size,
-                'people': room.people,
-                'latitudine': room.latitudine,
-                'longitudine': room.longitudine,
-                'price': room.price,
-                'type': room.type,
-                'bestroom': room.bestroom,
-                'probability': room.probability,
-                'last_update': room.last_update.isoformat()
-            })
-
-        # Simuliamo la sincronizzazione al cloud (qui potresti chiamare un'API esterna come Adafruit.io)
-        print("Syncing rooms to cloud:", rooms_data)
-
-        return JsonResponse({'status': 'success', 'synced_rooms': rooms_data}, status=200)
-
-    return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)
-
-# -------------------- API consente alle stanze di comunicare tra loro --------------------
-@csrf_exempt
-def room_interaction(request):
-    if request.method == 'POST':
-        try:
-            # Ricevi i dati JSON
-            data = json.loads(request.body)
-            room_from_id = data.get('room_from')
-            room_to_id = data.get('room_to')
-            interaction_data = data.get('data_transferred', '')
-
-            # Verifica se le stanze esistono
-            room_from = Room.objects.get(id=room_from_id)
-            room_to = Room.objects.get(id=room_to_id)
-
-            # Registra l'interazione
-            interaction = InteractionLog.objects.create(
-                room_from=room_from,
-                room_to=room_to,
-                data_transferred=interaction_data
-            )
-
-            return JsonResponse({"status": "success", "message": "Interaction recorded", "interaction_id": interaction.id}, status=200)
-
-        except Room.DoesNotExist:
-            return JsonResponse({"error": "One or both rooms do not exist"}, status=404)
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON format"}, status=400)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-    return JsonResponse({"error": "Invalid request method. Only POST is allowed."}, status=405)
-
-
-# -------------------- API per recuperare i dati delle stanze dal cloud --------------------
-@csrf_exempt
-def get_adafruit_data(request, room_name):
-    if request.method == 'GET':
-        try:
-            room_prefix = room_name.replace(" ", "-").lower()
-
-            temperature = aio.receive(f'{room_prefix}.temperature').value
-            humidity = aio.receive(f'{room_prefix}.humidity').value
-            co2 = aio.receive(f'{room_prefix}.co2').value
-            light = aio.receive(f'{room_prefix}.light').value
-            sound = aio.receive(f'{room_prefix}.sound').value
-            occupancy = aio.receive(f'{room_prefix}.occupancy').value
-            bestroom = aio.receive(f'{room_prefix}.bestroom').value
-            room_status = aio.receive(f'{room_prefix}.room-status').value
-
-            return JsonResponse({
-                "room": room_name,
-                "temperature": temperature,
-                "humidity": humidity,
-                "co2": co2,
-                "light": light,
-                "sound": sound,
-                "occupancy": occupancy,
-                "bestroom": bestroom,
-                "room_status": room_status
-            }, status=200)
-
-        except Exception as e:
-            return JsonResponse({"error": f"Error retrieving Adafruit IO data: {str(e)}"}, status=500)
-
-    return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)

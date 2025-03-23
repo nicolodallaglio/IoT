@@ -5,11 +5,11 @@ url = "http://127.0.0.1:8000/api/receive_sensor_data/"
 
 data = {
     "bridge_name": "bridge_piano1",
-    "room_name": "Sala Conferenze I",
-    "temperature": 27.5,
+    "room_name": "Sala Conferenze III",
+    "temperature": 26.5,
     "humidity": 90,
-    "lightSensor": 300,
-    "Quality": 400,
+    "light": 300,             # Modificato da lightSensor a light
+    "co2": 400,               # Modificato da Quality a co2
     "sound": 80,
     "people": 5,
     "room_size": 40,

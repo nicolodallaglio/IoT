@@ -1,133 +1,125 @@
-import os
-import django
-from datetime import datetime
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from time import sleep
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.action_chains import ActionChains
+import time
+import re
+import locale
+from datetime import datetime
+from geopy.geocoders import GoogleV3
 
-# Imposta l'ambiente Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'djangoapp.settings')
-django.setup()
-from AppIoT.models import Event
+# Imposta il locale su italiano per gestire i mesi in italiano
+locale.setlocale(locale.LC_TIME, 'it_IT.UTF-8')
+# Funzione per convertire le date
+def format_date(date_str):
+    # Riconosciamo il formato "dal {data_inizio} al {data_fine}"
+    date_range_pattern = r"dal (\d{1,2} [a-zA-Z]+ \d{4}) al (\d{1,2} [a-zA-Z]+ \d{4})"
+    match = re.search(date_range_pattern, date_str)
 
-def scrape_events():
-    # Configura ChromeDriver con opzioni
-    chrome_options = Options()
-    # Rimuovi il parametro headless per testare visivamente
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--disable-software-rasterizer")
-    chrome_options.add_argument("--disable-webgl")
-    chrome_options.add_argument("--disable-webgl2")
-    chrome_options.add_argument("--disable-web-security")
-    chrome_options.add_argument("--ignore-certificate-errors")
-    chrome_options.add_argument("--ignore-ssl-errors=yes")
-    chrome_options.add_argument("--allow-insecure-localhost")
-    chrome_options.add_argument("--disable-site-isolation-trials")
-    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.50 Safari/537.36")
+    if match:
+        date_start = datetime.strptime(match.group(1), "%d %B %Y")
+        date_end = datetime.strptime(match.group(2), "%d %B %Y")
+        return date_start, date_end
+    return None, None
 
-    # Specifica il percorso corretto del ChromeDriver
-    service = Service(executable_path=r'C:\Users\Nicolò\Documents\IoT2025\chromedriver-win64\chromedriver-win64\chromedriver.exe')
-    driver = webdriver.Chrome(service=service, options=chrome_options)
 
-    #url = "https://www.modenatoday.it/eventi/"
-    url = "https://www.comune.modena.it/vivere-modena/eventi"
-    print(f"🌐 Accedendo all'URL: {url}")
-    driver.get(url)
+# Funzione per ottenere latitudine e longitudine usando geopy
+ape = "AIzaSyCpdJrhynybDB1T7E1_7ajF6BziTVm8IFQ"
+def get_coordinates(luogo):
+    geolocator = GoogleV3(api_key=ape)
 
-    # Gestione del banner cookie
     try:
-        cookie_button = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Accetta')]"))
-        )
-        cookie_button.click()
-        print("✅ Banner dei cookie accettato")
-        sleep(2)
+        location = geolocator.geocode(luogo, timeout=10)
+        if location:
+            return location.latitude, location.longitude
+        else:
+            return None, None  # Se non trovato, ritorna None
     except Exception as e:
-        print(f"⚠️ Nessun banner cookie trovato o errore: {e}")
+        print(f"Errore nel geocoding per {luogo}: {e}")
+        return None, None  # Se c'è un errore, ritorna None
 
-    # Scorri la pagina per forzare il caricamento degli eventi
-    for _ in range(5):
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        sleep(2)
 
-    # Stampa l'HTML della pagina per il debug
-    print("🔎 HTML della pagina:")
-    print(driver.page_source[:1000])
+# Funzione per trasformare gli eventi
+def process_events(events):
+    processed_events = []
 
-    # Attendi il caricamento degli eventi
-    try:
-        WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "div.c-article-card"))
-        )
-        print("✅ Eventi caricati correttamente")
-    except Exception as e:
-        print(f"❌ Errore durante il caricamento degli eventi: {e}")
-        driver.quit()
-        return
+    for event in events:
+        # Separiamo Data e Luogo
+        data_match, luogo_match = event
 
-    # Trova tutti gli eventi
-    try:
-        events = driver.find_elements(By.CSS_SELECTOR, "div.c-article-card")
-        print(f"🔍 Trovati {len(events)} eventi")
-
-        for event in events:
-            try:
-                title_element = event.find_element(By.CSS_SELECTOR, "h3.c-article-card__title")
-                title = title_element.text
-                print(f"📝 Titolo: {title}")
-
-                location_element = event.find_element(By.CSS_SELECTOR, "p.c-article-card__location")
-                location = location_element.text
-                print(f"📍 Luogo: {location}")
-
-                date_element = event.find_element(By.CSS_SELECTOR, "span.c-article-card__date")
-                date_text = date_element.text
-                print(f"📅 Data: {date_text}")
-
-                # Parsing della data
-                try:
-                    if "dal" in date_text and "al" in date_text:
-                        date_parts = date_text.split(" al ")
-                        start_date = datetime.strptime(date_parts[0].replace("dal ", "").strip() + " 2025", "%d %B %Y")
-                        end_date = datetime.strptime(date_parts[1].strip() + " 2025", "%d %B %Y")
-                    else:
-                        start_date = datetime.strptime(date_text, "%d %B %Y")
-                        end_date = start_date
-                    print(f"📆 Data inizio: {start_date}, Data fine: {end_date}")
-                except Exception as e:
-                    print(f"❌ Errore nel parsing della data: {e}")
+        if data_match and luogo_match:
+            # Formattiamo la data
+            formatted_date_start, formatted_date_end = format_date(data_match)
+            if formatted_date_start and formatted_date_end:
+                # Escludiamo "Location varie" e altri luoghi non interessanti
+                luogo = luogo_match
+                if "Location varie" in luogo:
                     continue
 
-                # Verifica se l'evento esiste già nel database
-                if not Event.objects.filter(title=title, location=location, start_date=start_date).exists():
-                    Event.objects.create(
-                        title=title,
-                        location=location,
-                        start_date=start_date,
-                        end_date=end_date
-                    )
-                    print(f"✅ Evento salvato: {title} a {location} dal {start_date} al {end_date}")
-                else:
-                    print(f"⚠️ Evento già presente: {title}")
+                # Otteniamo le coordinate del luogo
+                coordinates = get_coordinates(luogo)
+                if coordinates:
+                    lat, lon = coordinates
+                    processed_events.append({
+                        "data_inizio": formatted_date_start,
+                        "data_fine": formatted_date_end,
+                        "luogo": luogo,
+                        "latitudine": lat,
+                        "longitudine": lon
+                    })
 
-            except Exception as e:
-                print(f"❌ Errore durante il parsing dell'evento: {e}")
-    except Exception as e:
-        print(f"❌ Errore durante il recupero degli eventi: {e}")
+    return processed_events
+# Impostare il WebDriver
+options = webdriver.ChromeOptions()
+options.add_argument("--headless")  # Esegui in modalità invisibile (opzionale)
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
-    # Chiudi il driver
-    driver.quit()
-    print("🚪 Driver chiuso correttamente")
+# URL della pagina eventi
+url = "https://www.modenatoday.it/eventi/"
 
-if __name__ == "__main__":
-    scrape_events()
+# Aprire la pagina
+driver.get(url)
+time.sleep(3)  # Attendere il caricamento
+
+# Cliccare il pulsante "Accetta" dei cookie
+try:
+    # Trova il pulsante "Accetta" (può variare, quindi verifica il nome esatto)
+    pulsante_cookie = driver.find_element(By.XPATH, "//button[contains(text(), 'Accetta')]")
+
+
+
+    # Usa ActionChains nel caso ci siano problemi di sovrapposizione
+    ActionChains(driver).move_to_element(pulsante_cookie).click().perform()
+    time.sleep(1)
+    ActionChains(driver).move_to_element(pulsante_cookie).click().perform()
+    print("Cookie accettati con successo!")
+
+    # Attendere un attimo per assicurarsi che il banner scompaia
+    time.sleep(2)
+except Exception as e:
+    print("Nessun banner dei cookie trovato o errore:", e)
+
+# Trova tutti gli <span> con la classe specificata
+span_eventi = driver.find_elements(By.CLASS_NAME, "u-label-07.u-ml-medium.u-inline-block")
+
+# Estrarre i testi dagli span
+dati_testo = [span.text.strip() for span in span_eventi]
+
+# Creare la lista di coppie [luogo, data]
+eventi_organizzati = [[dati_testo[i], dati_testo[i + 1]] for i in range(0, len(dati_testo) - 1, 2)]
+
+# Stampare il risultato
+for evento in eventi_organizzati:
+    evento[1] = evento[1] + ' Modena'
+    print(f"Data: {evento[0]} | Luogo: {evento[1]}")
+
+# Processa gli eventi
+processed_events = process_events(eventi_organizzati)
+
+# Mostra il risultato
+for event in processed_events:
+    print(f"Data Inizio: {event['data_inizio']},Data Fine: {event['data_fine']}, Luogo: {event['luogo']}, Latitudine: {event['latitudine']}, Longitudine: {event['longitudine']}")
+
+# Chiudere il driver
+driver.quit()

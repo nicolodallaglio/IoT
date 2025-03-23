@@ -1,8 +1,8 @@
 from django.db import models
 
 class Room(models.Model):
-    bridge = models.CharField(max_length=100, null=True, blank=True)  # Identificativo IoT
     name = models.CharField(max_length=100)
+    bridge = models.CharField(max_length=100, null=True, blank=True)  # Identificativo IoT
     type = models.CharField(max_length=100, default='generico')
     price = models.FloatField(default=0)
 
@@ -22,20 +22,14 @@ class Room(models.Model):
 
     online_status = models.BooleanField(default=False)  # Indica se la stanza è attiva nel cloud
     last_update = models.DateTimeField(auto_now=True)   # Ultima sincronizzazione
+    adafruit_position = models.IntegerField(null=True, blank=True)  # Posizione su Adafruit (1, 2, 3)
+
     
     adjacent_rooms = models.ManyToManyField("self", blank=True)  # Connessioni tra stanze
 
     def __str__(self):
         return self.name
 
-class InteractionLog(models.Model):
-    room_from = models.ForeignKey(Room, related_name="interactions_from", on_delete=models.CASCADE)
-    room_to = models.ForeignKey(Room, related_name="interactions_to", on_delete=models.CASCADE)
-    timestamp = models.DateTimeField(auto_now_add=True)
-    data_transferred = models.TextField()  # Informazioni scambiate tra le stanze
-
-    def __str__(self):
-        return f"Interaction from {self.room_from.name} to {self.room_to.name} at {self.timestamp}"
     
 class Venditore(models.Model):
     nome = models.CharField(max_length=255)
