@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets
 from .serializers import RoomSerializer
 from rest_framework import viewsets
-
+from AppIoT.mqtt_client import send_mqtt_command
 from .models import Room
 
 from AppIoT.adafruit.adafruit_client import (
@@ -176,15 +176,40 @@ def generate_status(room):
         "sound": "HIGH" if room.sound > 50 else "OK"
     }
 
+# Funzione per inviare un avviso tramite MQTT
+def send_alert_mqtt(room, alert_type, value):
+    topic = "bridge/alert"
+    payload = {
+        "from": room.name,
+        "alert": alert_type,
+        "value": value
+    }
+    send_mqtt_command(topic, payload)
+    print(f"🚨 Alert inviato tramite MQTT: {payload}")
+
+# Funzione per inviare un comando specifico a una stanza
+def send_room_command(room_name, command):
+    topic = f"{room_name}/comando"
+    payload = {"action": command}
+    send_mqtt_command(topic, payload)
+    print(f"🚀 Comando inviato tramite MQTT a {room_name}: {payload}")
+
 # Funzione per verificare e inviare alert se necessario
 def check_and_alert(room):
     if room.temperature > 30:
         alert_message = f"Alta temperatura nella {room.name}: {room.temperature}°C"
-        send_alert(alert_message)
+        send_alert_mqtt(room, "Alta temperatura", room.temperature)
         print(alert_message)
-        adjacent_rooms = Room.objects.exclude(name=room.name)  # Stanze adiacenti
-        for adj_room in adjacent_rooms:
-            send_command_to_room(adj_room.name, {"action": "RAFFREDDA", "value": 20})
+    
+    if room.co2 > 1000:
+        alert_message = f"CO2 elevata nella {room.name}: {room.co2} ppm"
+        send_alert_mqtt(room, "CO2 alta", room.co2)
+        print(alert_message)
+    
+    if room.sound > 50:
+        alert_message = f"Rumore elevato nella {room.name}: {room.sound} dB"
+        send_alert_mqtt(room, "Rumore alto", room.sound)
+        print(alert_message)
 
 # Controlla se tutte e tre le stanze del bridge sono aggiornate
 def check_bridge_completion(bridge_name):
@@ -209,7 +234,6 @@ def upload_bridge_to_adafruit(bridge_name):
     print(f"✅ Bridge {bridge_name} caricato correttamente su Adafruit.")
 
 # Endpoint per ricevere i dati dal bridge e salvarli nel database
-@csrf_exempt
 @csrf_exempt
 def receive_sensor_data(request):
     if request.method == 'POST':
@@ -284,8 +308,6 @@ def receive_sensor_data(request):
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Metodo non valido. Solo POST consentito."}, status=405)
-
-
 
 
 
