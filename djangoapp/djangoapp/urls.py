@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from django.contrib import admin
-from AppIoT.views import RoomViewSet, train_model_view, predict_view, mostra_migliori_stanze, api_migliori_stanze, index
+from AppIoT.views import RoomViewSet, predict_view, mostra_migliori_stanze, api_migliori_stanze, index
 from AppIoT.views import receive_sensor_data, receive_location_data
 
 # Router per le API
@@ -11,8 +11,6 @@ router.register(r'stanze', RoomViewSet)  # Registra il ViewSet per il modello Ro
 # Combina gli URL generati dal router con quelli manuali
 urlpatterns = [
     path("admin/", admin.site.urls),
-    # path('classifica/', Ranking.salva_classifica, name='salva_classifica'),  # Da abilitare se necessario
-    path('train/', train_model_view, name='train_model'),
     path('predict/', predict_view, name='predict'),
     path('migliori-stanze/', mostra_migliori_stanze, name='migliori_stanze'),
     path('api/receive_sensor_data/', receive_sensor_data, name='receive_sensor_data'),

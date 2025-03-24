@@ -6,13 +6,13 @@ import json
 from django.views import View
 from django.views.generic import ListView
 from django.shortcuts import render
-from .ml_model.ml_model import train_model, predict_and_sort_rooms
+from .ml_model.ml_model import predict_and_sort_rooms
 from AppIoT.utils import check_and_notify_adjacent_rooms
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets
 from .serializers import RoomSerializer
 from rest_framework import viewsets
-from AppIoT.mqtt_client import send_mqtt_command
+from AppIoT.mqtt.mqtt_client import send_mqtt_command
 from .models import Room
 
 from AppIoT.adafruit.adafruit_client import (
@@ -21,79 +21,7 @@ from AppIoT.adafruit.adafruit_client import (
     adafruit_room_mapping
 )
 
-# -------------------- ML --------------------
-#TRAIN ML
-# training a partire dal csv
-def train_model_view(request):
-    if request.method == 'GET':
-        # Renderizza il template HTML per il form di upload
-        return render(request, 'train.html')
-    elif request.method == 'POST':
-        if 'file' not in request.FILES:
-            return JsonResponse({"error": "No file provided"}, status=400)
-
-        # Ottieni il file dal form
-        file = request.FILES['file']
-        response = train_model(file)
-        return JsonResponse(response)
-    else:
-        return JsonResponse({"error": "Invalid request method"}, status=400)
-
-#PREDICT ML -- predirre se la nuova stanza è buona o no
-def predict_view(request):
-    if request.method == 'POST':
-        try:
-            # Ottieni i dati di input dal corpo della richiesta (in formato JSON)
-            data = json.loads(request.body)
-
-            # Converte i dati in un DataFrame Pandas
-            input_data = pd.DataFrame(data)
-
-            # Verifica che il DataFrame non sia vuoto
-            if input_data.empty:
-                return JsonResponse({"error": "Empty input data provided"}, status=400)
-
-            # Usa la funzione predict_and_sort_rooms per fare previsioni e ordinare le stanze
-            sorted_rooms = predict_and_sort_rooms(input_data)
-
-            # Cicla attraverso i dati e le previsioni ordinate, e salva ogni stanza nel database
-            for i, row in sorted_rooms.iterrows():
-                Room.objects.create(
-                    name=f"Room {i + 1}",  # Nome stanza generato dinamicamente
-                    temperature=row['Temperature'],  
-                    humidity=row['Humidity'], 
-                    light=row['Light_scaled'], 
-                    co2=row['CO2_scaled'],
-                    sound=row['Sound'],
-                    room_size=row['Room_Size'],
-                    people=row['People'],
-                    occupancy=row['predicted_class'],
-                    probability=row['probability']
-                )
-
-            # Prepara la risposta come JSON
-            response = {
-                "sorted_rooms": sorted_rooms[['Temperature', 'Humidity', 'Light', 'CO2', 'HumidityRatio', 'probability', 'predicted_class']].to_dict(orient='records')
-            }
-            return JsonResponse(response, status=200)
-
-        except Exception as e:
-            # Gestione di qualsiasi eccezione
-            return JsonResponse({"error": str(e)}, status=400)
-
-    # Risposta per metodi HTTP non validi
-    return JsonResponse({"error": "Invalid request method. Only POST is allowed."}, status=405)
-
-
-
-# logica di regressione lineare per predire il prezzo dinamico delle stanze 
-def predici_prezzo(input_data):
-    # Inserisci qui il modello di regressione lineare per predire i prezzi
-    modello = ...  # Carica il modello addestrato
-    prezzo_predetto = modello.predict(input_data)
-    return prezzo_predetto
-
-    
+ 
 # ---------------- INDEX -------------------------
 
 def index(request):
@@ -145,8 +73,8 @@ def find_optimal_room():
         room.rating = calculate_rating(room)
 
     # Ordina prima per Online, bestroom (1=ottimali) e poi per il rating in ordine decrescente
-    rooms_sorted = sorted(rooms, key=lambda r: (r.online_status, r.bestroom, r.rating), reverse=True)
-    return rooms_sorted
+    rooms_sorted = sorted(rooms, key=lambda r: (r.online_status, r.bridge!='empty', r.bestroom, r.rating), reverse=True)
+    return rooms_sorted[:20]
 
 
 
@@ -178,14 +106,17 @@ def generate_status(room):
 
 # Funzione per inviare un avviso tramite MQTT
 def send_alert_mqtt(room, alert_type, value):
-    topic = "bridge/alert"
-    payload = {
-        "from": room.name,
-        "alert": alert_type,
-        "value": value
-    }
-    send_mqtt_command(topic, payload)
-    print(f"🚨 Alert inviato tramite MQTT: {payload}")
+    topic = "nicodalla99/feeds/bridge.alert"
+    payload = f"{alert_type}: {value} in {room.name}"  # Payload come stringa
+    try:
+        result = send_mqtt_command(topic, payload)
+        if result:
+            print(f"✅ Alert inviato correttamente tramite MQTT: {payload}")
+        else:
+            print(f"❌ Errore nell'invio dell'alert tramite MQTT: {payload}")
+    except Exception as e:
+        print(f"❌ Errore durante l'invio tramite MQTT: {e}")
+
 
 # Funzione per inviare un comando specifico a una stanza
 def send_room_command(room_name, command):
@@ -199,6 +130,11 @@ def check_and_alert(room):
     if room.temperature > 30:
         alert_message = f"Alta temperatura nella {room.name}: {room.temperature}°C"
         send_alert_mqtt(room, "Alta temperatura", room.temperature)
+        print(alert_message)
+
+    if room.temperature > 50 and room.co2 > 2000:
+        alert_message = f"Alta temperatura e alta Co2 nella {room.name}: {room.temperature}°C"
+        send_alert_mqtt(room, "Allarme incendio", room.temperature)
         print(alert_message)
     
     if room.co2 > 1000:
@@ -239,24 +175,42 @@ def receive_sensor_data(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            bridge_name = data.get('bridge_name', 'default_bridge')
-            room_name = data.get('room_name', 'default_room')
+            bridge_name = data.get('bridge_name', 'missing_bridge')
+            room_name = data.get('room_name', 'missing_name')
             temperature = data.get('temperature')
             humidity = data.get('humidity')
             co2 = data.get('co2')
             light = data.get('light')
             sound = data.get('sound')
-            people = data.get('people', 0)
-            room_size = data.get('room_size', 25)
-            latitudine = data.get('latitudine', 44.62902432803542)
-            longitudine = data.get('longitudine', 10.94885144130329)
-            price = data.get('price', 0)
+            people = data.get('people')
+            room_size = data.get('room_size')
+            latitudine = data.get('latitudine')
+            longitudine = data.get('longitudine')
+            price = data.get('price')
 
             # Verifica dati mancanti
             if not all([temperature, humidity, co2, light, sound]):
                 return JsonResponse({"error": "Dati mancanti"}, status=400)
+            
+            #--ML--
+            # Crea il DataFrame per la predizione
+            input_data = pd.DataFrame([{
+                'Temperature': temperature,
+                'Humidity': humidity,
+                'Light_scaled': light,
+                'CO2_scaled': co2,
+                'Sound': sound,
+                'Room_Size': room_size,
+                'People': people
+            }])
 
-            # Crea o aggiorna la stanza nel database come Offline
+            # Chiama la funzione di predizione
+            predicted_room = predict_and_sort_rooms(input_data).iloc[0]
+            predicted_class = int(predicted_room['predicted_class'])
+            probability = round(predicted_room['probability'], 3)
+
+
+            # Crea o aggiorna la stanza nel database, con la classificazione
             room, created = Room.objects.update_or_create(
                 name=room_name,
                 bridge=bridge_name,
@@ -271,19 +225,26 @@ def receive_sensor_data(request):
                     'latitudine': latitudine,
                     'longitudine': longitudine,
                     'price': price,
-                    'online_status': False  # Inizialmente Offline
+                    'online_status': False,  # Inizialmente Offline
+                    'bestroom': predicted_class,  # Imposta la classificazione
+                    'probability': probability  # Aggiungi la probabilità
                 }
             )
 
             print(f"Stanza '{room_name}' associata al bridge '{bridge_name}' salvata come Offline.")
+            print(f"📊 Stanza '{room_name}' classificata come {'Migliore' if predicted_class == 1 else 'Non Ottimale'} con probabilità {probability * 100:.1f}%.")
+
+            # ⚠️ Chiamata alla funzione per verificare e inviare alert
+            check_and_alert(room)
 
             # Controlla se ci sono 3 stanze con lo stesso bridge
             rooms_same_bridge = Room.objects.filter(bridge=bridge_name)
 
+            # Invia i dati solo se ci sono 3 stanze collegate allo stesso bridge
             if rooms_same_bridge.count() == 3:
                 print(f"🏠 Trovate 3 stanze con lo stesso bridge '{bridge_name}'. Preparazione invio a Adafruit...")
-                
-                # Manda i dati su Adafruit e marca come Online
+
+                # Itera sulle 3 stanze e invia i dati ad Adafruit
                 for i, room in enumerate(rooms_same_bridge):
                     position = i + 1  # Posizione da 1 a 3
                     success = send_room_data_to_adafruit(room, position)
@@ -298,7 +259,9 @@ def receive_sensor_data(request):
             return JsonResponse({
                 "status": "success",
                 "message": f"Dati ricevuti da {room.name}",
-                "room_id": room.id
+                "room_id": room.id,
+                "classification": predicted_class,
+                "probability": probability
             }, status=200)
 
         except json.JSONDecodeError:
@@ -310,6 +273,38 @@ def receive_sensor_data(request):
     return JsonResponse({"error": "Metodo non valido. Solo POST consentito."}, status=405)
 
 
+# -------------------- ML --------------------
+# PREDICT ML -- predire se la nuova stanza è buona o no
+def predict_view(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            input_data = pd.DataFrame(data)
+
+            if input_data.empty:
+                return JsonResponse({"error": "Empty input data provided"}, status=400)
+
+            # Usa la funzione predict_and_sort_rooms per fare previsioni
+            sorted_rooms = predict_and_sort_rooms(input_data)
+
+            # Prepara la risposta come JSON
+            response = {
+                "sorted_rooms": sorted_rooms[['Temperature', 'Humidity', 'Light_scaled', 'CO2_scaled', 'Sound', 'Room_Size', 'People', 'probability', 'predicted_class']].to_dict(orient='records')
+            }
+            return JsonResponse(response, status=200)
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+    return JsonResponse({"error": "Invalid request method. Only POST is allowed."}, status=405)
+
+
+# logica di regressione lineare per predire il prezzo dinamico delle stanze 
+def predici_prezzo(input_data):
+    # Inserisci qui il modello di regressione lineare per predire i prezzi
+    modello = ...  # Carica il modello addestrato
+    prezzo_predetto = modello.predict(input_data)
+    return prezzo_predetto
 
 
 # --------- API FLUTTER ------------

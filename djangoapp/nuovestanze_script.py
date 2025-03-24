@@ -4,18 +4,18 @@ import json
 url = "http://127.0.0.1:8000/api/receive_sensor_data/"
 
 data = {
-    "bridge_name": "bridge_piano1",
-    "room_name": "Sala Conferenze III",
-    "temperature": 26.5,
-    "humidity": 90,
+    "bridge_name": "bridge_piano2",
+    "room_name": "Sala Conferenze II",
+    "temperature": 22,
+    "humidity": 40,
     "light": 300,             # Modificato da lightSensor a light
     "co2": 400,               # Modificato da Quality a co2
-    "sound": 80,
+    "sound": 30,
     "people": 5,
     "room_size": 40,
     "latitudine": 44.62902432803542,
     "longitudine": 10.94885144130329,
-    "price": 30,
+    "price": 5,
     "type": "studio"
 }
 

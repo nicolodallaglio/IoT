@@ -64,10 +64,12 @@ def adafruit_room_mapping(index):
     }
     return mapping.get(index, "stanza-1")  # Default se qualcosa va storto
 
+# Funzione per inviare i dati della stanza ad Adafruit IO
 def send_room_data_to_adafruit(room, position):
     """Invia i dati della stanza ad Adafruit IO."""
     try:
-        group_name = adafruit_room_mapping(position)
+        # Usa il nome del gruppo in base alla posizione
+        group_name = f"stanza-{position}"
 
         # Mappa dei feed
         data = {
@@ -83,9 +85,11 @@ def send_room_data_to_adafruit(room, position):
         for key, value in data.items():
             feed_name = f"{group_name}.{key}"
             send_to_adafruit(feed_name, value)
+            print(f"✅ Dato inviato a {feed_name}: {value}")
 
         print(f"✅ Dati stanza {room.name} inviati correttamente su Adafruit come {group_name}")
         return True
     except Exception as e:
         print(f"❌ Errore nell'invio dati per la stanza '{room.name}': {e}")
         return False
+

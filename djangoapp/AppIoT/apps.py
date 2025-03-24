@@ -7,5 +7,5 @@ class AppiotConfig(AppConfig):
 
     def ready(self):
             # Avvio del client MQTT all'avvio del server Django
-            from .mqtt_client import client
+            from .mqtt.mqtt_client import client
             print("🔗 Client MQTT avviato!")
