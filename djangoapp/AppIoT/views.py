@@ -14,6 +14,13 @@ from .serializers import RoomSerializer
 from rest_framework import viewsets
 from AppIoT.mqtt.mqtt_client import send_mqtt_command
 from .models import Room
+import math
+from datetime import datetime
+from .models import Event
+import pickle
+import locale
+import unicodedata
+
 
 from AppIoT.adafruit.adafruit_client import (
     send_room_data_to_adafruit,
@@ -169,7 +176,23 @@ def upload_bridge_to_adafruit(bridge_name):
 
     print(f"✅ Bridge {bridge_name} caricato correttamente su Adafruit.")
 
-# Endpoint per ricevere i dati dal bridge e salvarli nel database
+
+# Calcolo della distanza tra due coordinate geografiche
+def haversine(lat1, lon1, lat2, lon2):
+    # Controllo se una delle coordinate è None
+    if None in [lat1, lon1, lat2, lon2]:
+        print("❌ Errore: Coordinate non valide per il calcolo della distanza.")
+        return float('inf')  # Restituiamo una distanza infinita per ignorare l'evento
+
+    R = 6371  # Raggio della Terra in km
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    distance = R * c * 1000  # Converti in metri
+    return distance
+
+
 @csrf_exempt
 def receive_sensor_data(request):
     if request.method == 'POST':
@@ -189,12 +212,44 @@ def receive_sensor_data(request):
             price = data.get('price')
 
             print(temperature, humidity, co2, light, sound)
+
             # Verifica dati mancanti
             if not all([temperature, humidity, co2, light, sound]):
                 return JsonResponse({"error": "Dati mancanti"}, status=400)
-            
-            #--ML--
-            # Crea il DataFrame per la predizione
+
+            # -- Ottenere il giorno corrente in italiano --
+
+            # Ottieni il giorno corrente in inglese
+            giorno_eng = datetime.now().strftime("%A")
+
+            # Mappatura dei giorni della settimana da inglese a italiano senza accenti
+            giorni_tradotti = {
+                "Monday": "Lunedì",
+                "Tuesday": "Martedì",
+                "Wednesday": "Mercoledì",
+                "Thursday": "Giovedì",
+                "Friday": "Venerdì",
+                "Saturday": "Sabato",
+                "Sunday": "Domenica"
+            }
+
+            # Converti il giorno corrente da inglese a italiano senza accenti
+            giorno = giorni_tradotti.get(giorno_eng, giorno_eng)
+            print(f"Giorno corrente (tradotto e normalizzato): {giorno}")
+
+            # -- Calcolo degli eventi nelle vicinanze --
+            distanza_massima = 500  # Distanza massima in metri per considerare l'evento vicino
+            eventi_vicini = Event.objects.all()
+            evento_vicinanze = 0  # Default: nessun evento vicino
+
+            for evento in eventi_vicini:
+                distanza = haversine(latitudine, longitudine, evento.latitudine, evento.longitudine)
+                if distanza <= distanza_massima:
+                    evento_vicinanze = 1
+                    print(f"Evento vicino trovato: {evento.title} a {distanza:.2f} metri.")
+                    break
+
+            # -- ML -- CLASSIFICAZIONE
             input_data = pd.DataFrame([{
                 'Temperature': temperature,
                 'Humidity': humidity,
@@ -204,14 +259,30 @@ def receive_sensor_data(request):
                 'Room_Size': room_size,
                 'People': people
             }])
-
-            # Chiama la funzione di predizione
             predicted_room = predict_and_sort_rooms(input_data).iloc[0]
             predicted_class = int(predicted_room['predicted_class'])
             probability = round(predicted_room['probability'], 3)
 
+            # -- ML -- PREDIZIONE PREZZO
+            # Caricare il modello di pricing
+            with open("AppIoT\ml_model\modello_prezzo.pkl", "rb") as file:
+                model, label_encoder = pickle.load(file)
 
-            # Crea o aggiorna la stanza nel database, con la classificazione
+            # Codificare il giorno
+            giorno_codificato = label_encoder.transform([giorno])[0]
+
+            # Creare il DataFrame per la predizione del prezzo
+            prezzo_input = pd.DataFrame([{
+                "Capienza Massima": room_size,
+                "Evento nelle Vicinanze": int(evento_vicinanze),
+                "Giorno Codificato": giorno_codificato
+            }])
+
+            # Fare la predizione del prezzo
+            prezzo_predetto = model.predict(prezzo_input)[0]
+            prezzo_arrotondato = 5 * round(prezzo_predetto / 5)
+
+            # -- CREAZIONE O AGGIORNAMENTO STANZA NEL DB --
             room, created = Room.objects.update_or_create(
                 name=room_name,
                 bridge=bridge_name,
@@ -225,29 +296,27 @@ def receive_sensor_data(request):
                     'people': people,
                     'latitudine': latitudine,
                     'longitudine': longitudine,
-                    'price': price,
-                    'online_status': False,  # Inizialmente Offline
-                    'bestroom': predicted_class,  # Imposta la classificazione
-                    'probability': probability  # Aggiungi la probabilità
+                    'price': prezzo_arrotondato,  # Prezzo predetto
+                    'online_status': False,
+                    'bestroom': predicted_class,
+                    'probability': probability
                 }
             )
 
             print(f"Stanza '{room_name}' associata al bridge '{bridge_name}' salvata come Offline.")
-            print(f"📊 Stanza '{room_name}' classificata come {'Migliore' if predicted_class == 1 else 'Non Ottimale'} con probabilità {probability * 100:.1f}%.")
+            print(f"📊 Stanza '{room_name}' classificata come {'Migliore' if predicted_class == 1 else 'Non Ottimale'} con probabilità {probability * 100:.1f}% e prezzo {prezzo_arrotondato}€.")
 
-            # ⚠️ Chiamata alla funzione per verificare e inviare alert
+            # ⚠️ Verifica e invio alert
             check_and_alert(room)
 
-            # Controlla se ci sono 3 stanze con lo stesso bridge
+            # Verifica se ci sono 3 stanze con lo stesso bridge
             rooms_same_bridge = Room.objects.filter(bridge=bridge_name)
 
             # Invia i dati solo se ci sono 3 stanze collegate allo stesso bridge
             if rooms_same_bridge.count() == 3:
                 print(f"🏠 Trovate 3 stanze con lo stesso bridge '{bridge_name}'. Preparazione invio a Adafruit...")
-
-                # Itera sulle 3 stanze e invia i dati ad Adafruit
                 for i, room in enumerate(rooms_same_bridge):
-                    position = i + 1  # Posizione da 1 a 3
+                    position = i + 1
                     success = send_room_data_to_adafruit(room, position)
                     if success:
                         room.online_status = True
@@ -262,7 +331,8 @@ def receive_sensor_data(request):
                 "message": f"Dati ricevuti da {room.name}",
                 "room_id": room.id,
                 "classification": predicted_class,
-                "probability": probability
+                "probability": probability,
+                "prezzo_predetto": prezzo_arrotondato
             }, status=200)
 
         except json.JSONDecodeError:
@@ -272,6 +342,7 @@ def receive_sensor_data(request):
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Metodo non valido. Solo POST consentito."}, status=405)
+
 
 
 # -------------------- ML --------------------
@@ -362,17 +433,16 @@ def receive_location_data(request):
             data = json.loads(request.body)
 
             # Estrai longitudine e latitudine dai dati
-            latitude = data.get('latitude')
-            longitude = data.get('longitude')
+            latitudine = data.get('latitudine')
+            longitudine = data.get('longitudine')
             
-
-            if longitude is None or latitude is None:
-                return JsonResponse({"error": "latitude and Longitude are required"}, status=400)
+            if longitudine is None or latitudine is None:
+                return JsonResponse({"error": "latitudine and Longitude are required"}, status=400)
 
             # Qui puoi salvare i dati nel database o processarli come necessario
-            print(f"Received location: Latitude={latitude}, Longitude={longitude}")
+            print(f"Received location: Latitudine={latitudine}, Longitude={longitudine}")
 
-            return JsonResponse({"status": "success", "latitude": latitude, "longitude": longitude}, status=200)
+            return JsonResponse({"status": "success", "latitudine": latitudine, "longitudine": longitudine}, status=200)
         
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)

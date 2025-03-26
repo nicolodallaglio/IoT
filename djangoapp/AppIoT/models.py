@@ -4,7 +4,7 @@ class Room(models.Model):
     name = models.CharField(max_length=100)
     bridge = models.CharField(max_length=100, null=True, blank=True)  # Identificativo IoT
     type = models.CharField(max_length=100, default='generico')
-    price = models.FloatField(default=0)
+    price = models.FloatField(default=0.0)
 
     temperature = models.FloatField(default=0)
     humidity = models.FloatField(default=0)
