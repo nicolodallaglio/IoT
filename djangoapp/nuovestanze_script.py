@@ -6,7 +6,7 @@ url = "http://127.0.0.1:8000/api/receive_sensor_data/"
 data = {
     "bridge_name": "bridge_piano2",
     "room_name": "Sala Conferenze II",
-    "temperature": 22,
+    "temperature": 400,
     "humidity": 40,
     "light": 300,             # Modificato da lightSensor a light
     "co2": 400,               # Modificato da Quality a co2

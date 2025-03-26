@@ -1,3 +1,11 @@
+import os
+import django
+
+# Imposta l'ambiente Django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'djangoapp.settings')
+django.setup()
+
+from AppIoT.models import Event
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -5,121 +13,226 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.action_chains import ActionChains
 import time
 import re
-import locale
 from datetime import datetime
+from pytz import timezone
+from django.utils.timezone import make_aware
+
+import locale
+
+# Imposta il locale su italiano
+try:
+    locale.setlocale(locale.LC_TIME, 'it_IT.UTF-8')
+except locale.Error:
+    print("Errore: locale 'it_IT.UTF-8' non supportato. Provo con 'it_IT'.")
+    try:
+        locale.setlocale(locale.LC_TIME, 'it_IT')
+    except locale.Error:
+        print("Errore: locale italiano non disponibile.")
+
 from geopy.geocoders import GoogleV3
 
-# Imposta il locale su italiano per gestire i mesi in italiano
-locale.setlocale(locale.LC_TIME, 'it_IT.UTF-8')
-# Funzione per convertire le date
-def format_date(date_str):
-    # Riconosciamo il formato "dal {data_inizio} al {data_fine}"
-    date_range_pattern = r"dal (\d{1,2} [a-zA-Z]+ \d{4}) al (\d{1,2} [a-zA-Z]+ \d{4})"
-    match = re.search(date_range_pattern, date_str)
+# Chiave API di Google
+api_key = "AIzaSyCpdJrhynybDB1T7E1_7ajF6BziTVm8IFQ"  # Inserisci la tua chiave API di Google
 
-    if match:
-        date_start = datetime.strptime(match.group(1), "%d %B %Y")
-        date_end = datetime.strptime(match.group(2), "%d %B %Y")
-        return date_start, date_end
-    return None, None
+from geopy.geocoders import GoogleV3
 
+# Chiave API di Google
+api_key = "AIzaSyCpdJrhynybDB1T7E1_7ajF6BziTVm8IFQ"  # Inserisci la tua chiave API di Google
 
-# Funzione per ottenere latitudine e longitudine usando geopy
-ape = "AIzaSyCpdJrhynybDB1T7E1_7ajF6BziTVm8IFQ"
-def get_coordinates(luogo):
-    geolocator = GoogleV3(api_key=ape)
-
+# Funzione per ottenere le coordinate geografiche
+def get_coordinates(location):
+    geolocator = GoogleV3(api_key=api_key)
     try:
-        location = geolocator.geocode(luogo, timeout=10)
-        if location:
-            return location.latitude, location.longitude
-        else:
-            return None, None  # Se non trovato, ritorna None
+        # Primo tentativo: utilizza il nome esatto
+        geo_location = geolocator.geocode(location, timeout=10)
+        if geo_location:
+            print(f"✅ Coordinate trovate per '{location}': {geo_location.latitude}, {geo_location.longitude}")
+            return geo_location.latitude, geo_location.longitude
+        
+        # Secondo tentativo: aggiungi "Modena" alla fine del nome
+        geo_location = geolocator.geocode(f"{location}, Modena", timeout=10)
+        if geo_location:
+            print(f"✅ Coordinate trovate per '{location}, Modena': {geo_location.latitude}, {geo_location.longitude}")
+            return geo_location.latitude, geo_location.longitude
+        
+        # Terzo tentativo: prova con un termine più generico
+        geo_location = geolocator.geocode(f"{location}, Italia", timeout=10)
+        if geo_location:
+            print(f"✅ Coordinate trovate per '{location}, Italia': {geo_location.latitude}, {geo_location.longitude}")
+            return geo_location.latitude, geo_location.longitude
+        
+        print(f"❌ Coordinate non trovate per '{location}'")
+        return None, None
     except Exception as e:
-        print(f"Errore nel geocoding per {luogo}: {e}")
-        return None, None  # Se c'è un errore, ritorna None
+        print(f"❌ Errore nel geocoding per '{location}': {e}")
+        return None, None
 
 
-# Funzione per trasformare gli eventi
-def process_events(events):
-    processed_events = []
-
-    for event in events:
-        # Separiamo Data e Luogo
-        data_match, luogo_match = event
-
-        if data_match and luogo_match:
-            # Formattiamo la data
-            formatted_date_start, formatted_date_end = format_date(data_match)
-            if formatted_date_start and formatted_date_end:
-                # Escludiamo "Location varie" e altri luoghi non interessanti
-                luogo = luogo_match
-                if "Location varie" in luogo:
-                    continue
-
-                # Otteniamo le coordinate del luogo
-                coordinates = get_coordinates(luogo)
-                if coordinates:
-                    lat, lon = coordinates
-                    processed_events.append({
-                        "data_inizio": formatted_date_start,
-                        "data_fine": formatted_date_end,
-                        "luogo": luogo,
-                        "latitudine": lat,
-                        "longitudine": lon
-                    })
-
-    return processed_events
-# Impostare il WebDriver
+# Configurazione del WebDriver
 options = webdriver.ChromeOptions()
-options.add_argument("--headless")  # Esegui in modalità invisibile (opzionale)
+options.add_argument("--headless")
+options.add_argument("--ignore-certificate-errors")
+options.add_argument("--disable-web-security")
+options.add_argument("--no-sandbox")
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
-# URL della pagina eventi
-url = "https://www.modenatoday.it/eventi/"
+def format_date(date_str):
+    rome_tz = timezone('Europe/Rome')
 
-# Aprire la pagina
-driver.get(url)
-time.sleep(3)  # Attendere il caricamento
+    # Pattern per data singola (es. "30 marzo 2025")
+    single_date_pattern = r"(\d{1,2}) ([a-zA-Z]+) (\d{4})"
+    match = re.search(single_date_pattern, date_str)
+    if match:
+        try:
+            date = datetime.strptime(f"{match.group(1)} {match.group(2)} {match.group(3)}", "%d %B %Y")
+            print(f"Data singola riconosciuta: {date}")
+            return make_aware(date, rome_tz), make_aware(date, rome_tz)
+        except Exception as e:
+            print(f"Errore nel parsing della data singola: {e} - Data: {match.group(0)}")
 
-# Cliccare il pulsante "Accetta" dei cookie
-try:
-    # Trova il pulsante "Accetta" (può variare, quindi verifica il nome esatto)
-    pulsante_cookie = driver.find_element(By.XPATH, "//button[contains(text(), 'Accetta')]")
+    # Pattern per data singola senza anno (es. "30 marzo")
+    single_date_no_year_pattern = r"(\d{1,2}) ([a-zA-Z]+)"
+    match = re.search(single_date_no_year_pattern, date_str)
+    if match:
+        try:
+            current_year = datetime.now().year
+            date = datetime.strptime(f"{match.group(1)} {match.group(2)} {current_year}", "%d %B %Y")
+            print(f"Data singola senza anno riconosciuta: {date}")
+            return make_aware(date, rome_tz), make_aware(date, rome_tz)
+        except Exception as e:
+            print(f"Errore nel parsing della data singola senza anno: {e} - Data: {match.group(0)}")
+
+    # Pattern per intervallo con anni (es. "dal 2 ottobre 2024 al 28 maggio 2025")
+    range_date_pattern = r"dal (\d{1,2} [a-zA-Z]+ \d{4}) al (\d{1,2} [a-zA-Z]+ \d{4})"
+    match = re.search(range_date_pattern, date_str)
+    if match:
+        try:
+            start_date = datetime.strptime(match.group(1), "%d %B %Y")
+            end_date = datetime.strptime(match.group(2), "%d %B %Y")
+            print(f"Intervallo con anni riconosciuto: {start_date} - {end_date}")
+            return make_aware(start_date, rome_tz), make_aware(end_date, rome_tz)
+        except Exception as e:
+            print(f"Errore nel parsing dell'intervallo data con anno: {e} - Data: {match.group(0)}")
+
+    # Pattern per intervallo breve (es. "dal 5 al 29 marzo 2025")
+    short_range_date_pattern = r"dal (\d{1,2}) al (\d{1,2}) ([a-zA-Z]+) (\d{4})"
+    match = re.search(short_range_date_pattern, date_str)
+    if match:
+        try:
+            start_date = datetime.strptime(f"{match.group(1)} {match.group(3)} {match.group(4)}", "%d %B %Y")
+            end_date = datetime.strptime(f"{match.group(2)} {match.group(3)} {match.group(4)}", "%d %B %Y")
+            print(f"Intervallo breve riconosciuto: {start_date} - {end_date}")
+            return make_aware(start_date, rome_tz), make_aware(end_date, rome_tz)
+        except Exception as e:
+            print(f"Errore nel parsing dell'intervallo breve: {e} - Data: {match.group(0)}")
+
+    # Pattern per intervallo misto (es. "dal 1 marzo al 5 maggio 2025")
+    mixed_range_date_pattern = r"dal (\d{1,2} [a-zA-Z]+) al (\d{1,2} [a-zA-Z]+) (\d{4})"
+    match = re.search(mixed_range_date_pattern, date_str)
+    if match:
+        try:
+            start_date = datetime.strptime(f"{match.group(1)} {match.group(3)}", "%d %B %Y")
+            end_date = datetime.strptime(f"{match.group(2)} {match.group(3)}", "%d %B %Y")
+            print(f"Intervallo misto riconosciuto: {start_date} - {end_date}")
+            return make_aware(start_date, rome_tz), make_aware(end_date, rome_tz)
+        except Exception as e:
+            print(f"Errore nel parsing dell'intervallo misto: {e} - Data: {match.group(0)}")
+
+    print(f"Formato data non riconosciuto: {date_str}")
+    return None, None
+
+# Funzione per salvare l'evento nel database
+# Funzione per salvare l'evento nel database
+def save_event(title, location, dates):
+    try:
+        if dates is None or dates[0] is None or dates[1] is None:
+            print(f"Evento '{title}' non salvato a causa di date non valide.")
+            return
+        
+        start_date, end_date = dates
+
+        # Otteniamo le coordinate del luogo
+        lat, lon = get_coordinates(location)
+
+        # Verifica se le date sono effettivamente oggetti datetime
+        if not isinstance(start_date, datetime) or not isinstance(end_date, datetime):
+            print(f"Errore: le date non sono nel formato datetime - Start: {start_date}, End: {end_date}")
+            return
+
+         # Usa update_or_create per aggiornare o creare l'evento con latitudine e longitudine
+        event_instance, created = Event.objects.update_or_create(
+            title=title,
+            location=location,
+            start_date=start_date,
+            end_date=end_date,
+            defaults={
+                'latitudine': lat,
+                'longitudine': lon
+            }
+        )
+        print(f"{'Creato' if created else 'Aggiornato'}: {event_instance}")
+    except Exception as e:
+        print(f"Errore nel salvataggio dell'evento: {e}")
 
 
 
-    # Usa ActionChains nel caso ci siano problemi di sovrapposizione
-    ActionChains(driver).move_to_element(pulsante_cookie).click().perform()
-    time.sleep(1)
-    ActionChains(driver).move_to_element(pulsante_cookie).click().perform()
-    print("Cookie accettati con successo!")
+# Crawler per ModenaToday
+def crawl_modenatoday():
+    url = "https://www.modenatoday.it/eventi/"
+    driver.get(url)
+    time.sleep(3)
 
-    # Attendere un attimo per assicurarsi che il banner scompaia
-    time.sleep(2)
-except Exception as e:
-    print("Nessun banner dei cookie trovato o errore:", e)
+    try:
+        pulsante_cookie = driver.find_element(By.XPATH, "//button[contains(text(), 'Accetta')]")
+        ActionChains(driver).move_to_element(pulsante_cookie).click().perform()
+        time.sleep(2)
+    except Exception:
+        pass
 
-# Trova tutti gli <span> con la classe specificata
-span_eventi = driver.find_elements(By.CLASS_NAME, "u-label-07.u-ml-medium.u-inline-block")
+    eventi = driver.find_elements(By.CLASS_NAME, "u-label-07.u-ml-medium.u-inline-block")
+    dati_testo = [event.text.strip() for event in eventi]
 
-# Estrarre i testi dagli span
-dati_testo = [span.text.strip() for span in span_eventi]
+    eventi_organizzati = [[dati_testo[i], dati_testo[i + 1]] for i in range(0, len(dati_testo) - 1, 2)]
+    for evento in eventi_organizzati:
+        title = f"Evento a {evento[1]}"
+        location = evento[1]
+        dates = format_date(evento[0])  # Otteniamo una coppia (start_date, end_date)
+        save_event(title, location, dates)
 
-# Creare la lista di coppie [luogo, data]
-eventi_organizzati = [[dati_testo[i], dati_testo[i + 1]] for i in range(0, len(dati_testo) - 1, 2)]
+# Crawler per Comune di Modena
+def crawl_comune_modena():
+    url = "https://www.comune.modena.it/vivere-modena/eventi"
+    driver.get(url)
+    time.sleep(3)
 
-# Stampare il risultato
-for evento in eventi_organizzati:
-    evento[1] = evento[1] + ' Modena'
-    print(f"Data: {evento[0]} | Luogo: {evento[1]}")
+    eventi = driver.find_elements(By.CSS_SELECTOR, ".evento .titolo")
+    date_elements = driver.find_elements(By.CSS_SELECTOR, ".evento .data")
 
-# Processa gli eventi
-processed_events = process_events(eventi_organizzati)
+    for title, date in zip(eventi, date_elements):
+        event_title = title.text.strip()
+        event_date = format_date(date.text.strip())
+        save_event(event_title, "Modena", event_date)
 
-# Mostra il risultato
-for event in processed_events:
-    print(f"Data Inizio: {event['data_inizio']},Data Fine: {event['data_fine']}, Luogo: {event['luogo']}, Latitudine: {event['latitudine']}, Longitudine: {event['longitudine']}")
+# Crawler per TicketOne
+def crawl_ticketone():
+    url = "https://www.ticketone.it/cityd/modena-1151/"
+    driver.get(url)
+    time.sleep(3)
 
-# Chiudere il driver
-driver.quit()
+    eventi = driver.find_elements(By.CSS_SELECTOR, ".event-title")
+    date_elements = driver.find_elements(By.CSS_SELECTOR, ".event-date")
+
+    for title, date in zip(eventi, date_elements):
+        event_title = title.text.strip()
+        event_date = format_date(date.text.strip())
+        save_event(event_title, "Modena", event_date)
+
+# Funzione principale
+def main():
+    crawl_modenatoday()
+    crawl_comune_modena()
+    crawl_ticketone()
+    driver.quit()
+
+if __name__ == "__main__":
+    main()

@@ -188,6 +188,7 @@ def receive_sensor_data(request):
             longitudine = data.get('longitudine')
             price = data.get('price')
 
+            print(temperature, humidity, co2, light, sound)
             # Verifica dati mancanti
             if not all([temperature, humidity, co2, light, sound]):
                 return JsonResponse({"error": "Dati mancanti"}, status=400)
