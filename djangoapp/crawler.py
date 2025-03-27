@@ -141,7 +141,7 @@ def format_date(date_str):
     print(f"Formato data non riconosciuto: {date_str}")
     return None, None
 
-# Funzione per salvare l'evento nel database
+
 # Funzione per salvare l'evento nel database
 def save_event(title, location, dates):
     try:
@@ -154,12 +154,18 @@ def save_event(title, location, dates):
         # Otteniamo le coordinate del luogo
         lat, lon = get_coordinates(location)
 
+        # Se sono None, assegna coordinate fisse
+        if lat is None or lon is None:
+            lat = 44.62902432803542
+            lon = 10.94885144130329
+            print(f"❌ Coordinate non trovate, inserite coordinate fisse per '{location}'")
+
         # Verifica se le date sono effettivamente oggetti datetime
         if not isinstance(start_date, datetime) or not isinstance(end_date, datetime):
             print(f"Errore: le date non sono nel formato datetime - Start: {start_date}, End: {end_date}")
             return
 
-         # Usa update_or_create per aggiornare o creare l'evento con latitudine e longitudine
+        # Usa update_or_create per aggiornare o creare l'evento
         event_instance, created = Event.objects.update_or_create(
             title=title,
             location=location,
@@ -170,9 +176,18 @@ def save_event(title, location, dates):
                 'longitudine': lon
             }
         )
-        print(f"{'Creato' if created else 'Aggiornato'}: {event_instance}")
+
+        # Se l'evento esiste già e ha ancora latitudine o longitudine NULL, forzare l'aggiornamento
+        if not created and (event_instance.latitudine is None or event_instance.longitudine is None):
+            event_instance.latitudine = lat
+            event_instance.longitudine = lon
+            event_instance.save()
+            print(f"🔄 Aggiornato (forzato): {event_instance}")
+        else:
+            print(f"✅ Creato: {event_instance}")
+
     except Exception as e:
-        print(f"Errore nel salvataggio dell'evento: {e}")
+        print(f"❌ Errore nel salvataggio dell'evento: {e}")
 
 
 

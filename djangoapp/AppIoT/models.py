@@ -45,7 +45,6 @@ class Bridge(models.Model):
     def __str__(self):
         return self.nome
 
-from django.db import models
 
 class Event(models.Model):
     title = models.CharField(max_length=255)
@@ -58,5 +57,11 @@ class Event(models.Model):
     def __str__(self):
         return f"{self.title} - {self.location} ({self.start_date} - {self.end_date})"
 
+class User(models.Model):
+    name = models.CharField(max_length=255)
+    surname = models.CharField(max_length=255, default="Rossi")
+    latitudine = models.FloatField(null=True, blank=True)
+    longitudine = models.FloatField(null=True, blank=True)
 
-
+    def __str__(self):
+        return f"{self.name} {self.surname}"

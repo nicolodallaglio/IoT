@@ -1,27 +1,23 @@
 from django.shortcuts import render
-import pandas as pd
-from django.http import HttpResponse
-from django.http import JsonResponse
-import json
 from django.views import View
 from django.views.generic import ListView
 from django.shortcuts import render
-from .ml_model.ml_model import predict_and_sort_rooms
-from AppIoT.utils import check_and_notify_adjacent_rooms
+from django.http import (HttpResponse, JsonResponse)
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets
-from .serializers import RoomSerializer
-from rest_framework import viewsets
-from AppIoT.mqtt.mqtt_client import send_mqtt_command
-from .models import Room
 import math
 from datetime import datetime
-from .models import Event
 import pickle
 import locale
 import unicodedata
+import pandas as pd
+import json
 
-
+from .ml_model.ml_classificazione import predict_and_sort_rooms
+from AppIoT.utils import check_and_notify_adjacent_rooms
+from .serializers import RoomSerializer
+from AppIoT.mqtt.mqtt_client import send_mqtt_command
+from .models import ( Room, User, Event )
 from AppIoT.adafruit.adafruit_client import (
     send_room_data_to_adafruit,
     send_to_adafruit,
@@ -48,46 +44,62 @@ def index(request):
 
 
 # ----------------- ALGORITMO --------------------
-#algoritmo considererà vari criteri, come il prezzo, la disponibilità e il rating della stanza
+"""algoritmo considererà vari criteri, come il prezzo, la disponibilità e il rating della stanza
+Daremo un peso alla distanza dall'utente, il 20% del rating totale.
+La distanza sarà normalizzata (per esempio, massimo 5 km).
+La parte "distanza" contribuirà negativamente al rating (più è lontano, peggiore è il rating)."""
 
-def find_optimal_room():
+def calculate_rating(room, user_lat=None, user_lon=None):
+    # Calcola il punteggio combinato per i dati dei sensori (arrotondando a una cifra decimale)
+    sensor_score = (
+        (1 - abs(round(room.temperature, 1) - 22) / 10) +  # 22°C come valore ottimale per il comfort
+        (1 - abs(round(room.co2, 1) - 400) / 1000) +       # 400 ppm come valore ottimale per il comfort
+        (1 - abs(round(room.sound, 1) - 30) / 40) +        # 30 dB come valore ottimale per il comfort acustico
+        (round(room.light, 1) / 1000)                      # Normalizza la luce
+    ) / 4  # Media dei punteggi dei sensori
+
+    # Calcolo della distanza dall'utente (se fornita)
+    distance_score = 0
+    if user_lat is not None and user_lon is not None and room.latitudine and room.longitudine:
+        distance = haversine(user_lat, user_lon, room.latitudine, room.longitudine)
+        max_distance = 5000  # Consideriamo 5 km come distanza massima
+        distance_score = max(0, 1 - (distance / max_distance))  # Normalizzato tra 0 e 1
+        print(f"Distanza per la stanza {room.name}: {distance} m, Score: {distance_score}")
+
+    # Normalizza il prezzo: assumendo che 50 sia il massimo prezzo
+    price_normalized = (50 - room.price) / 50
+
+    # Rating finale combinando comfort (sensori), prezzo e distanza
+    return 0.6 * sensor_score + 0.2 * price_normalized + 0.2 * distance_score
+
+
+def find_optimal_room(user_lat=None, user_lon=None):
     # Recupera tutte le stanze
     rooms = Room.objects.all()  
 
     if not rooms.exists():
         return None  # Nessuna stanza disponibile
 
-    def calculate_sensor_score(room):
-        # Calcola il punteggio combinato per i dati dei sensori (arrotondando a una cifra decimale)
-        sensor_score = (
-            (1 - abs(round(room.temperature, 1) - 22) / 10) +  # 22°C come valore ottimale per il comfort
-            (1 - abs(round(room.co2, 1) - 400) / 1000) +       # 400 ppm come valore ottimale per il comfort
-            (1 - abs(round(room.sound, 1) - 30) / 40) +        # 30 dB come valore ottimale per il comfort acustico
-            (round(room.light, 1) / 1000)                      # Normalizza la luce
-        ) / 4  # Media dei punteggi dei sensori
-        return sensor_score
-
-    def calculate_rating(room):
-        # Calcola un rating basato sul rapporto qualità-prezzo e sui sensori
-        sensor_score = calculate_sensor_score(room)
-        # Normalizza il prezzo: assumendo che 50 sia il massimo prezzo
-        price_normalized = (50 - room.price) / 50
-        # Rating finale combinando comfort (sensori) e rapporto qualità-prezzo (80% sensori, 20% prezzo)
-        return 0.8 * sensor_score + 0.2 * price_normalized
-
     # Aggiungi il rating a ciascuna stanza e ordina in base a bestroom e rating
     for room in rooms:
-        room.rating = calculate_rating(room)
+        room.rating = calculate_rating(room, user_lat, user_lon)
 
     # Ordina prima per Online, bestroom (1=ottimali) e poi per il rating in ordine decrescente
-    rooms_sorted = sorted(rooms, key=lambda r: (r.online_status, r.bridge!='empty', r.bestroom, r.rating), reverse=True)
+    rooms_sorted = sorted(rooms, key=lambda r: (r.online_status, r.bridge != 'empty', r.bestroom, r.rating), reverse=True)
     return rooms_sorted[:20]
 
 
 
 def mostra_migliori_stanze(request):
-    # Trova le stanze ottimali usando la logica dei sensori
-    migliori_stanze = find_optimal_room()
+    # Recupera l'utente per ottenere la posizione
+    try:
+        user = User.objects.get(name="Mario", surname="Rossi")
+        user_lat, user_lon = user.latitudine, user.longitudine
+    except User.DoesNotExist:
+        user_lat, user_lon = None, None
+
+    # Trova le stanze ottimali usando la logica dei sensori e la posizione dell'utente
+    migliori_stanze = find_optimal_room(user_lat, user_lon)
 
     # Se non ci sono stanze disponibili, mostra un messaggio di errore
     if not migliori_stanze:
@@ -95,6 +107,7 @@ def mostra_migliori_stanze(request):
 
     # Passa le stanze ottimali al template per essere visualizzate
     return render(request, 'migliori_stanze.html', {'aule': migliori_stanze})
+
 
 
 
@@ -134,6 +147,7 @@ def send_room_command(room_name, command):
 
 # Funzione per verificare e inviare alert se necessario
 def check_and_alert(room):
+    #temperature e allarme incendio
     if room.temperature > 30:
         alert_message = f"Alta temperatura nella {room.name}: {room.temperature}°C"
         send_alert_mqtt(room, "Alta temperatura", room.temperature)
@@ -144,14 +158,43 @@ def check_and_alert(room):
         send_alert_mqtt(room, "Allarme incendio", room.temperature)
         print(alert_message)
     
-    if room.co2 > 1000:
+    #co2
+    if room.co2 > 500:
         alert_message = f"CO2 elevata nella {room.name}: {room.co2} ppm"
         send_alert_mqtt(room, "CO2 alta", room.co2)
         print(alert_message)
     
+    #light
+    if room.light < 200:
+        alert_message = f"Luce molto bassa nella {room.name}: {room.light} lux"
+        send_alert_mqtt(room, "Luce molto bassa", room.light)
+        print(alert_message)
+
+    if room.light < 800:
+        alert_message = f"Luce bassa nella {room.name}: {room.light} lux"
+        send_alert_mqtt(room, "Luce bassa", room.light)
+        print(alert_message)
+
+    #sound
     if room.sound > 50:
         alert_message = f"Rumore elevato nella {room.name}: {room.sound} dB"
         send_alert_mqtt(room, "Rumore alto", room.sound)
+        print(alert_message)
+
+    #N* persone
+    if room.people > (room.room_size/2):
+        alert_message = f"Metà capienza raggiunta nella {room.name}: {room.people} persone"
+        send_alert_mqtt(room, "Metà capienza", room.people)
+        print(alert_message)
+
+    if room.people > (room.room_size /2 + 10):
+        alert_message = f"Troppo affollamento nella {room.name}: {room.people} persone"
+        send_alert_mqtt(room, "Troppo affollato", room.people)
+        print(alert_message)
+    
+    if room.people == room.room_size:
+        alert_message = f"Capacità massima raggiunta nella {room.name}: {room.people} persone"
+        send_alert_mqtt(room, "Capacità massima", room.people)
         print(alert_message)
 
 # Controlla se tutte e tre le stanze del bridge sono aggiornate
@@ -238,7 +281,7 @@ def receive_sensor_data(request):
             print(f"Giorno corrente (tradotto e normalizzato): {giorno}")
 
             # -- Calcolo degli eventi nelle vicinanze --
-            distanza_massima = 500  # Distanza massima in metri per considerare l'evento vicino
+            distanza_massima = 10000  # Distanza massima in metri (10km)
             eventi_vicini = Event.objects.all()
             evento_vicinanze = 0  # Default: nessun evento vicino
 
@@ -248,7 +291,8 @@ def receive_sensor_data(request):
                     evento_vicinanze = 1
                     print(f"Evento vicino trovato: {evento.title} a {distanza:.2f} metri.")
                     break
-
+            
+                
             # -- ML -- CLASSIFICAZIONE
             input_data = pd.DataFrame([{
                 'Temperature': temperature,
@@ -305,6 +349,7 @@ def receive_sensor_data(request):
 
             print(f"Stanza '{room_name}' associata al bridge '{bridge_name}' salvata come Offline.")
             print(f"📊 Stanza '{room_name}' classificata come {'Migliore' if predicted_class == 1 else 'Non Ottimale'} con probabilità {probability * 100:.1f}% e prezzo {prezzo_arrotondato}€.")
+
 
             # ⚠️ Verifica e invio alert
             check_and_alert(room)
@@ -371,14 +416,6 @@ def predict_view(request):
     return JsonResponse({"error": "Invalid request method. Only POST is allowed."}, status=405)
 
 
-# logica di regressione lineare per predire il prezzo dinamico delle stanze 
-def predici_prezzo(input_data):
-    # Inserisci qui il modello di regressione lineare per predire i prezzi
-    modello = ...  # Carica il modello addestrato
-    prezzo_predetto = modello.predict(input_data)
-    return prezzo_predetto
-
-
 # --------- API FLUTTER ------------
 
 # Crea un ViewSet per gestire le operazioni CRUD: Il ViewSet viene utilizzato per gestire tutte le operazioni REST (GET, POST, PUT, DELETE).
@@ -389,12 +426,18 @@ class RoomViewSet(viewsets.ModelViewSet):
 
 
 # Nuova vista API per Flutter che restituisce le migliori aule in formato JSON
-from django.http import JsonResponse
-
-# Nuova vista API per Flutter che restituisce le migliori aule in formato JSON
 def api_migliori_stanze(request):
-    # Trova le migliori stanze utilizzando la funzione find_optimal_room
-    migliori_stanze = find_optimal_room()
+    # Recupera l'ultima posizione salvata nel database
+    try:
+        user = User.objects.get(name="Mario", surname="Rossi")
+        user_lat, user_lon = user.latitudine, user.longitudine
+        print(f"Ultima posizione utente trovata: Latitudine={user_lat}, Longitudine={user_lon}")
+    except User.DoesNotExist:
+        print("❌ Errore: Nessuna posizione salvata per l'utente")
+        return JsonResponse({'error': 'Nessuna posizione utente salvata'}, status=404)
+
+    # Trova le migliori stanze utilizzando la funzione find_optimal_room con la posizione dell'utente
+    migliori_stanze = find_optimal_room(user_lat, user_lon)
 
     # Verifica se ci sono stanze disponibili
     if not migliori_stanze:
@@ -424,7 +467,8 @@ def api_migliori_stanze(request):
     return JsonResponse({'rooms': rooms_data})
 
 
-#posizione
+
+#posizione utente da app flutter
 @csrf_exempt
 def receive_location_data(request):
     if request.method == 'POST':
@@ -436,15 +480,31 @@ def receive_location_data(request):
             latitudine = data.get('latitudine')
             longitudine = data.get('longitudine')
             
-            if longitudine is None or latitudine is None:
-                return JsonResponse({"error": "latitudine and Longitude are required"}, status=400)
+            # Verifica la validità delle coordinate
+            if latitudine is None or longitudine is None:
+                return JsonResponse({"error": "Latitudine e Longitudine sono obbligatorie"}, status=400)
+            if not isinstance(latitudine, (int, float)) or not isinstance(longitudine, (int, float)):
+                return JsonResponse({"error": "Latitudine e Longitudine devono essere numerici"}, status=400)
 
-            # Qui puoi salvare i dati nel database o processarli come necessario
-            print(f"Received location: Latitudine={latitudine}, Longitude={longitudine}")
+            # Nome e cognome fissi
+            name = "Mario"
+            surname = "Rossi"
+
+            # Salva o aggiorna l'utente nel database
+            user, created = User.objects.update_or_create(
+                name=name,
+                surname=surname,
+                defaults={'latitudine': latitudine, 'longitudine': longitudine}
+            )
+
+            print(f"Posizione salvata: {user} - Lat: {latitudine}, Lon: {longitudine}")
 
             return JsonResponse({"status": "success", "latitudine": latitudine, "longitudine": longitudine}, status=200)
         
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Formato JSON non valido"}, status=400)
         except Exception as e:
-            return JsonResponse({"error": str(e)}, status=400)
+            print(f"Errore nel salvataggio della posizione utente: {str(e)}")
+            return JsonResponse({"error": str(e)}, status=500)
 
-    return JsonResponse({"error": "Invalid request method. Only POST is allowed."}, status=405)
+    return JsonResponse({"error": "Metodo non valido. Solo POST è consentito."}, status=405)
