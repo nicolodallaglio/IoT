@@ -1,7 +1,7 @@
-import os
+import os 
 import pandas as pd
 import joblib
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import classification_report, accuracy_score
@@ -22,25 +22,37 @@ scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
-# Modello di classificazione
-param_grid = {
-    'max_depth': [3, 5, 7, 10],
-    'min_samples_split': [2, 5, 10],
-    'min_samples_leaf': [1, 2, 5]
-}
-grid_search = GridSearchCV(DecisionTreeClassifier(random_state=42), param_grid, cv=5, n_jobs=-1, scoring='accuracy')
-grid_search.fit(X_train_scaled, y_train)
+# Modello di classificazione con Pruning
+model = DecisionTreeClassifier(
+    random_state=42,
+    max_depth=7,
+    min_samples_split=5,
+    min_samples_leaf=2,
+    ccp_alpha=0.02
+)
 
-# Miglior modello ottenuto
-model = grid_search.best_estimator_
+# Addestramento del modello
+model.fit(X_train_scaled, y_train)
 
-# Valutazione del modello
-y_pred = model.predict(X_test_scaled)
-accuracy = accuracy_score(y_test, y_pred)
-report = classification_report(y_test, y_pred)
+# Predizioni su train e test
+y_train_pred = model.predict(X_train_scaled)
+y_test_pred = model.predict(X_test_scaled)
 
-print(f"Accuratezza: {accuracy:.4f}")
-print(f"Report di Classificazione:\n{report}")
+# Accuratezza su train e test
+train_accuracy = accuracy_score(y_train, y_train_pred)
+test_accuracy = accuracy_score(y_test, y_test_pred)
+
+# Report di classificazione su train e test
+train_report = classification_report(y_train, y_train_pred)
+test_report = classification_report(y_test, y_test_pred)
+
+print(f"🔍 METRICHE TRAINING:")
+print(f"Accuratezza (Train): {train_accuracy:.4f}")
+print(f"Report di Classificazione (Train):\n{train_report}")
+
+print(f"🔍 METRICHE TEST:")
+print(f"Accuratezza (Test): {test_accuracy:.4f}")
+print(f"Report di Classificazione (Test):\n{test_report}")
 
 # Salvataggio del modello e dello scaler
 joblib.dump(model, 'occupancy_model.pkl')

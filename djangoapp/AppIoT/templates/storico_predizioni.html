@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Storico Predizioni - {{ room.name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f2f4f8;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+            text-align: center;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        .predicted-yes {
+            color: green;
+            font-weight: bold;
+        }
+        .predicted-no {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Storico Predizioni per la stanza <em>{{ room.name }}</em></h1>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Data e Ora</th>
+                <th>Classe Predetta</th>
+                <th>Probabilità</th>
+                <th>Prezzo Stimato (€)</th>
+                <th>Fonte</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in history %}
+                <tr>
+                    <td>{{ p.timestamp|date:"d/m/Y H:i:s" }}</td>
+                    <td class="{% if p.predicted_class == 1 %}predicted-yes{% else %}predicted-no{% endif %}">
+                        {{ p.predicted_class }}
+                    </td>
+                    <td>{{ p.probability|floatformat:2 }}</td>
+                    <td>{{ p.predicted_price|floatformat:2 }}</td>
+                    <td>{{ p.source }}</td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="5">Nessuna predizione trovata per questa stanza.</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</body>
+</html>

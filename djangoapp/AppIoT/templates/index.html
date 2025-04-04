@@ -1,12 +1,71 @@
 <!DOCTYPE html>
-<html>
+<html lang="it">
 <head>
-    <title>Home</title>
+    <meta charset="UTF-8">
+    <title>SmartRooms - Home</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f8;
+            padding: 40px;
+            color: #333;
+        }
+
+        h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        h2 {
+            margin-top: 30px;
+            color: #007bff;
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        li {
+            margin-bottom: 15px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 1em;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .dropdown {
+            margin-top: 20px;
+        }
+
+        select {
+            padding: 8px;
+            font-size: 1em;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+        }
+
+        .go-button {
+            margin-left: 10px;
+        }
+    </style>
 </head>
 <body>
+
     <h1>{{ greeting_message }}</h1>
-    
-    <h2>Altri URL:</h2>
+
+    <h2>Sezioni disponibili:</h2>
     <ul>
         {% for url_data in other_urls %}
             <li>
@@ -16,5 +75,46 @@
             </li>
         {% endfor %}
     </ul>
+
+    {% if stanze %}
+        <div class="dropdown">
+            <h2>Storico predizioni per stanza:</h2>
+            <form method="get" action="" onsubmit="return goToPrediction()">
+                <select id="predictionSelector">
+                    {% for stanza in stanze %}
+                        <option value="{{ stanza.id }}">{{ stanza.name }}</option>
+                    {% endfor %}
+                </select>
+                <button class="go-button" type="submit">Vai</button>
+            </form>
+        </div>
+
+        <div class="dropdown">
+            <h2>Storico sensori per stanza:</h2>
+            <form method="get" action="" onsubmit="return goToSensor()">
+                <select id="sensorSelector">
+                    {% for stanza in stanze %}
+                        <option value="{{ stanza.id }}">{{ stanza.name }}</option>
+                    {% endfor %}
+                </select>
+                <button class="go-button" type="submit">Vai</button>
+            </form>
+        </div>
+    {% endif %}
+
+    <script>
+        function goToPrediction() {
+            const roomId = document.getElementById('predictionSelector').value;
+            window.location.href = `/storico/${roomId}/`;
+            return false;
+        }
+
+        function goToSensor() {
+            const roomId = document.getElementById('sensorSelector').value;
+            window.location.href = `/storico-sensori/${roomId}/`;
+            return false;
+        }
+    </script>
+
 </body>
 </html>

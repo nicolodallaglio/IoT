@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Storico Sensori - {{ room.name }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Andamento Sensori - {{ room.name }}</h1>
+
+    <canvas id="temperatureChart" height="100"></canvas>
+    <canvas id="humidityChart" height="100"></canvas>
+    <canvas id="co2Chart" height="100"></canvas>
+    <canvas id="lightChart" height="100"></canvas>
+    <canvas id="soundChart" height="100"></canvas>
+    <canvas id="peopleChart" height="100"></canvas>
+
+    <script>
+        const labels = {{ labels|safe }};
+
+        const commonOptions = {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: false
+                }
+            }
+        };
+
+        new Chart(document.getElementById('temperatureChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Temperatura (°C)',
+                    data: {{ temps|safe }},
+                    borderColor: 'red',
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.2
+                }]
+            },
+            options: commonOptions
+        });
+
+        new Chart(document.getElementById('humidityChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Umidità (%)',
+                    data: {{ hums|safe }},
+                    borderColor: 'blue',
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.2
+                }]
+            },
+            options: commonOptions
+        });
+
+        new Chart(document.getElementById('co2Chart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'CO₂ (ppm)',
+                    data: {{ co2s|safe }},
+                    borderColor: 'green',
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.2
+                }]
+            },
+            options: commonOptions
+        });
+
+        new Chart(document.getElementById('lightChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Luce (lux)',
+                    data: {{ lights|safe }},
+                    borderColor: 'orange',
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.2
+                }]
+            },
+            options: commonOptions
+        });
+
+        new Chart(document.getElementById('soundChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Rumore (dB)',
+                    data: {{ sounds|safe }},
+                    borderColor: 'purple',
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.2
+                }]
+            },
+            options: commonOptions
+        });
+
+        new Chart(document.getElementById('peopleChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Persone presenti',
+                    data: {{ people|safe }},
+                    borderColor: 'brown',
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.2
+                }]
+            },
+            options: commonOptions
+        });
+    </script>
+</body>
+</html>

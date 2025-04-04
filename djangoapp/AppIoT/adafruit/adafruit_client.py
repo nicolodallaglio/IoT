@@ -2,6 +2,7 @@ import os
 import requests
 from Adafruit_IO import Client, Group
 from django.conf import settings
+import time
 
 # Connessione a Adafruit IO
 aio = Client(settings.ADAFRUIT_AIO_USERNAME, settings.ADAFRUIT_AIO_KEY)
@@ -10,7 +11,6 @@ aio = Client(settings.ADAFRUIT_AIO_USERNAME, settings.ADAFRUIT_AIO_KEY)
 def create_group_if_not_exists(group_name):
     try:
         aio.groups(group_name)
-        print(f"Gruppo '{group_name}' già esistente.")
     except Exception:
         print(f"Il gruppo '{group_name}' non esiste, lo creo...")
         try:
@@ -25,7 +25,6 @@ def create_feed_if_not_exists(feed_name, group_name):
     try:
         feed_key = f'{group_name}.{feed_name}'
         aio.feeds(feed_key)
-        print(f"Feed '{feed_name}' trovato nel gruppo '{group_name}'.")
     except Exception:
         print(f"Il feed '{feed_name}' non esiste nel gruppo '{group_name}', lo creo...")
         try:
@@ -55,23 +54,16 @@ def send_to_adafruit(feed_name, value):
     except Exception as e:
         print(f"❌ Errore nell'invio a {feed_name}: {e}")
 
-# Mappa tra indice stanza e feed Adafruit
-def adafruit_room_mapping(index):
-    mapping = {
-        1: "stanza-1",
-        2: "stanza-2",
-        3: "stanza-3"
-    }
-    return mapping.get(index, "stanza-1")  # Default se qualcosa va storto
 
-# Funzione per inviare i dati della stanza ad Adafruit IO
 def send_room_data_to_adafruit(room, position):
-    """Invia i dati della stanza ad Adafruit IO."""
     try:
-        # Usa il nome del gruppo in base alla posizione
         group_name = f"stanza-{position}"
 
-        # Mappa dei feed
+        # Crea gruppo e feed (facoltativo)
+        create_group_if_not_exists(group_name)
+        for key in ["temperature", "humidity", "co2", "light", "sound", "occupancy", "status", "name"]:
+            create_feed_if_not_exists(key, group_name)
+
         data = {
             "temperature": room.temperature,
             "humidity": room.humidity,
@@ -79,17 +71,17 @@ def send_room_data_to_adafruit(room, position):
             "light": room.light,
             "sound": room.sound,
             "occupancy": room.people,
-            "status": "online" if room.online_status else "offline"
+            "status": "online" if room.online_status else "offline",
+            "name": room.name,
         }
 
         for key, value in data.items():
             feed_name = f"{group_name}.{key}"
             send_to_adafruit(feed_name, value)
-            print(f"✅ Dato inviato a {feed_name}: {value}")
+            time.sleep(0.3)  # opzionale, evita errori di rate limit
 
         print(f"✅ Dati stanza {room.name} inviati correttamente su Adafruit come {group_name}")
         return True
     except Exception as e:
         print(f"❌ Errore nell'invio dati per la stanza '{room.name}': {e}")
         return False
-

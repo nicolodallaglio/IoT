@@ -12,65 +12,68 @@ import locale
 import unicodedata
 import pandas as pd
 import json
-
+import numpy as np
+from django.db.models import Avg, Sum
+from django.utils import timezone
+from datetime import timedelta
 from .ml_model.ml_classificazione import predict_and_sort_rooms
-from AppIoT.utils import check_and_notify_adjacent_rooms
 from .serializers import RoomSerializer
 from AppIoT.mqtt.mqtt_client import send_mqtt_command
-from .models import ( Room, User, Event )
+from .models import ( Room, User, Event, UserEvent, PredictionHistory, SensorHistory, Feedback)
 from AppIoT.adafruit.adafruit_client import (
-    send_room_data_to_adafruit,
-    send_to_adafruit,
-    adafruit_room_mapping
-)
+    send_room_data_to_adafruit)
 
  
 # ---------------- INDEX -------------------------
 
 def index(request):
-    #mex di saluto
     greeting_message = "Benvenuto in SmartRooms"
-    #url visualizzabili in main page
+    
+    # Recupera le stanze disponibili
+    stanze = Room.objects.all()
+    
     other_urls = [
-        {'url': '/api/migliori-stanze/', 'label': 'api delle stanze per flutter'},
-        {'url': '/api/location/', 'label': 'api su cui il server riceve long e lat dell utente'},
-        {'url': '/api/receive_sensor_data/', 'label': 'api per caricare sensori arduino'},
-        {'url': '/train/', 'label': 'Traina il modello'},
-        {'url': '/migliori-stanze/', 'label': 'Stanze Migliori'},
+        {'url': '/migliori-stanze/', 'label': 'SmartRooms'},
     ]
-    #passiamo il mex al template e other urls
-    return render(request,'index.html', {'greeting_message': greeting_message, 'other_urls': other_urls})
+
+    return render(request, 'index.html', {
+        'greeting_message': greeting_message,
+        'other_urls': other_urls,
+        'stanze': stanze
+    })
 
 
 
 # ----------------- ALGORITMO --------------------
-"""algoritmo considererà vari criteri, come il prezzo, la disponibilità e il rating della stanza
-Daremo un peso alla distanza dall'utente, il 20% del rating totale.
-La distanza sarà normalizzata (per esempio, massimo 5 km).
-La parte "distanza" contribuirà negativamente al rating (più è lontano, peggiore è il rating)."""
 
 def calculate_rating(room, user_lat=None, user_lon=None):
     # Calcola il punteggio combinato per i dati dei sensori (arrotondando a una cifra decimale)
     sensor_score = (
-        (1 - abs(round(room.temperature, 1) - 22) / 10) +  # 22°C come valore ottimale per il comfort
-        (1 - abs(round(room.co2, 1) - 400) / 1000) +       # 400 ppm come valore ottimale per il comfort
-        (1 - abs(round(room.sound, 1) - 30) / 40) +        # 30 dB come valore ottimale per il comfort acustico
+        (1 - abs(round(room.temperature, 1) - 22) / 10) +  # 22°C valore ottimale
+        (1 - abs(round(room.co2, 1) - 400) / 1000) +       # 400 ppm valore ottimale
+        (1 - abs(round(room.sound, 1) - 30) / 40) +        # 30 dB valore ottimale
         (round(room.light, 1) / 1000)                      # Normalizza la luce
     ) / 4  # Media dei punteggi dei sensori
 
-    # Calcolo della distanza dall'utente (se fornita)
+    # Calcolo della distanza dall'utente, max distanza 2 km
     distance_score = 0
     if user_lat is not None and user_lon is not None and room.latitudine and room.longitudine:
         distance = haversine(user_lat, user_lon, room.latitudine, room.longitudine)
-        max_distance = 5000  # Consideriamo 5 km come distanza massima
-        distance_score = max(0, 1 - (distance / max_distance))  # Normalizzato tra 0 e 1
-        print(f"Distanza per la stanza {room.name}: {distance} m, Score: {distance_score}")
+        max_distance = 2000  
+        distance_score = max(0, 1 - (distance / max_distance))
+        if distance <= max_distance:
+            print(f"Stanza vicina trovata: {room.name} a {distance:.2f} m")
 
-    # Normalizza il prezzo: assumendo che 50 sia il massimo prezzo
-    price_normalized = (50 - room.price) / 50
+    # Normalizza il prezzo: assumendo che 30 sia il massimo prezzo
+    price_normalized = (30 - room.price) / 30
 
-    # Rating finale combinando comfort (sensori), prezzo e distanza
-    return 0.6 * sensor_score + 0.2 * price_normalized + 0.2 * distance_score
+    feedback_score = 0
+    feedbacks = room.feedbacks.all()
+    if feedbacks.exists():
+        avg_voto = feedbacks.aggregate(Avg('voto'))['voto__avg']
+        feedback_score = min(avg_voto / 5, 1)
+
+    return 0.5 * sensor_score + 0.2 * price_normalized + 0.2 * distance_score + 0.1 * feedback_score
 
 
 def find_optimal_room(user_lat=None, user_lon=None):
@@ -78,9 +81,8 @@ def find_optimal_room(user_lat=None, user_lon=None):
     rooms = Room.objects.all()  
 
     if not rooms.exists():
-        return None  # Nessuna stanza disponibile
+        return None
 
-    # Aggiungi il rating a ciascuna stanza e ordina in base a bestroom e rating
     for room in rooms:
         room.rating = calculate_rating(room, user_lat, user_lon)
 
@@ -91,23 +93,18 @@ def find_optimal_room(user_lat=None, user_lon=None):
 
 
 def mostra_migliori_stanze(request):
-    # Recupera l'utente per ottenere la posizione
     try:
         user = User.objects.get(name="Mario", surname="Rossi")
         user_lat, user_lon = user.latitudine, user.longitudine
     except User.DoesNotExist:
         user_lat, user_lon = None, None
 
-    # Trova le stanze ottimali usando la logica dei sensori e la posizione dell'utente
     migliori_stanze = find_optimal_room(user_lat, user_lon)
 
-    # Se non ci sono stanze disponibili, mostra un messaggio di errore
     if not migliori_stanze:
         return render(request, 'migliori_stanze.html', {'errore': 'Non ci sono stanze disponibili.'})
 
-    # Passa le stanze ottimali al template per essere visualizzate
     return render(request, 'migliori_stanze.html', {'aule': migliori_stanze})
-
 
 
 
@@ -125,21 +122,28 @@ def generate_status(room):
     }
 
 # Funzione per inviare un avviso tramite MQTT
-def send_alert_mqtt(room, alert_type, value):
-    topic = "nicodalla99/feeds/bridge.alert"
-    payload = f"{alert_type}: {value} in {room.name}"  # Payload come stringa
+def send_alert_mqtt(room, alert_type, value, severity="WARNING"):
+    if severity == "CRITICAL":
+        topic = "nicodalla99/feeds/bridge.alert"
+    else:
+        feed_room = f"stanza-{room.adafruit_position}"  # Es. stanza-1
+        topic = f"nicodalla99/feeds/{feed_room}.alert"
+
+    payload = f"[{severity}] {alert_type}: {value} in {room.name}"
+
     try:
         result = send_mqtt_command(topic, payload)
         if result:
-            print(f"✅ Alert inviato correttamente tramite MQTT: {payload}")
+            print(f"✅ Alert inviato su {topic}: {payload}")
         else:
-            print(f"❌ Errore nell'invio dell'alert tramite MQTT: {payload}")
+            print(f"❌ Errore nell'invio dell'alert su {topic}: {payload}")
     except Exception as e:
-        print(f"❌ Errore durante l'invio tramite MQTT: {e}")
+        print(f"❌ Errore durante l'invio MQTT su {topic}: {e}")
+
 
 
 # Funzione per inviare un comando specifico a una stanza
-def send_room_command(room_name, command):
+def send_room_command(room_name, command):  
     topic = f"{room_name}/comando"
     payload = {"action": command}
     send_mqtt_command(topic, payload)
@@ -147,77 +151,174 @@ def send_room_command(room_name, command):
 
 # Funzione per verificare e inviare alert se necessario
 def check_and_alert(room):
-    #temperature e allarme incendio
+    # Alert gravi (CRITICAL)
+    if room.temperature > 50 and room.co2 > 2000:
+        alert_message = f"Allarme incendio nella {room.name}: {room.temperature}°C e {room.co2} ppm"
+        send_alert_mqtt(room, "Allarme incendio", alert_message, severity="CRITICAL")
+        send_room_command(room.name, "emergenza_evacuazione")
+        print(alert_message)
+
+    if room.people >= room.room_size:
+        alert_message = f"Capacità massima raggiunta nella {room.name}: {room.people} persone"
+        send_alert_mqtt(room, "Capacità massima", alert_message, severity="CRITICAL")
+        send_room_command(room.name, "blocco_ingressi")
+        print(alert_message)
+
+    # Alert meno gravi (WARNING)
     if room.temperature > 30:
         alert_message = f"Alta temperatura nella {room.name}: {room.temperature}°C"
-        send_alert_mqtt(room, "Alta temperatura", room.temperature)
+        send_alert_mqtt(room, "Alta temperatura", alert_message)
+        send_room_command(room.name, "attiva_ventilazione")
         print(alert_message)
 
-    if room.temperature > 50 and room.co2 > 2000:
-        alert_message = f"Alta temperatura e alta Co2 nella {room.name}: {room.temperature}°C"
-        send_alert_mqtt(room, "Allarme incendio", room.temperature)
-        print(alert_message)
-    
-    #co2
     if room.co2 > 500:
         alert_message = f"CO2 elevata nella {room.name}: {room.co2} ppm"
-        send_alert_mqtt(room, "CO2 alta", room.co2)
+        send_alert_mqtt(room, "CO2 alta", alert_message)
+        send_room_command(room.name, "apri_finestra")
         print(alert_message)
-    
-    #light
+
     if room.light < 200:
         alert_message = f"Luce molto bassa nella {room.name}: {room.light} lux"
-        send_alert_mqtt(room, "Luce molto bassa", room.light)
+        send_alert_mqtt(room, "Luce molto bassa", alert_message)
+        send_room_command(room.name, "accendi_luci")
         print(alert_message)
 
-    if room.light < 800:
-        alert_message = f"Luce bassa nella {room.name}: {room.light} lux"
-        send_alert_mqtt(room, "Luce bassa", room.light)
-        print(alert_message)
-
-    #sound
     if room.sound > 50:
         alert_message = f"Rumore elevato nella {room.name}: {room.sound} dB"
-        send_alert_mqtt(room, "Rumore alto", room.sound)
+        send_alert_mqtt(room, "Rumore alto", alert_message)
+        send_room_command(room.name, "mostra_cartello_silenzio")
         print(alert_message)
 
-    #N* persone
-    if room.people > (room.room_size/2):
+    if room.people > (room.room_size / 2):
         alert_message = f"Metà capienza raggiunta nella {room.name}: {room.people} persone"
-        send_alert_mqtt(room, "Metà capienza", room.people)
+        send_alert_mqtt(room, "Metà capienza", alert_message)
         print(alert_message)
 
-    if room.people > (room.room_size /2 + 10):
+    if room.people > (room.room_size / 2 + 10):
         alert_message = f"Troppo affollamento nella {room.name}: {room.people} persone"
-        send_alert_mqtt(room, "Troppo affollato", room.people)
+        send_alert_mqtt(room, "Troppo affollato", alert_message)
+        send_room_command(room.name, "limita_accessi")
         print(alert_message)
     
-    if room.people == room.room_size:
-        alert_message = f"Capacità massima raggiunta nella {room.name}: {room.people} persone"
-        send_alert_mqtt(room, "Capacità massima", room.people)
-        print(alert_message)
+    # Comunicazione con altre stanze se condizioni critiche
+    room_communication_logic(room)
 
-# Controlla se tutte e tre le stanze del bridge sono aggiornate
-def check_bridge_completion(bridge_name):
-    rooms = Room.objects.filter(bridge=bridge_name)
-    return rooms.count() == 3 and all(room.online_status for room in rooms)
+    # Se ci sono utenti associati alla stanza, notifica
+    utenti_nella_stanza = User.objects.filter(latitudine=room.latitudine, longitudine=room.longitudine)
 
-# Mappa dinamica delle stanze su Adafruit
-def upload_bridge_to_adafruit(bridge_name):
-    rooms = Room.objects.filter(bridge=bridge_name)
+    for user in utenti_nella_stanza:
+        if room.co2 > 1000:
+            send_user_notification(user, f"CO2 alta in {room.name}. Ti consigliamo di spostarti.")
+        elif room.sound > 60:
+            send_user_notification(user, f"Rumore elevato in {room.name}. Cerca una stanza più silenziosa.")
+        elif room.people >= room.room_size:
+            send_user_notification(user, f"Troppa gente in {room.name}. Raggiunta la capienza massima.")
 
-    if rooms.count() != 3:
-        print(f"❌ Errore: il bridge {bridge_name} non ha 3 stanze collegate.")
+
+
+def room_communication_logic(room):
+    gruppo = room.adafruit_position
+    if not gruppo:
+        return  # Nessuna posizione Adafruit assegnata
+
+    candidate_rooms = Room.objects.filter(adafruit_position=gruppo).exclude(id=room.id)
+
+    # Stanze valide: poco affollate e classificate come ottimali
+    stanze_valide = [
+        r for r in candidate_rooms
+        if r.people < (r.room_size * 0.5) and r.bestroom == 1
+    ]
+
+    if not stanze_valide:
         return
 
-    for i, room in enumerate(rooms):
-        # Imposta la posizione della stanza su Adafruit (1, 2, 3)
-        room.adafruit_position = i + 1
-        room.online_status = True
-        room.save()
-        send_room_data_to_adafruit(room, room.adafruit_position)
+    # Trova la migliore in base al comfort
+    target_room = max(stanze_valide, key=lambda r: calculate_rating(r))
 
-    print(f"✅ Bridge {bridge_name} caricato correttamente su Adafruit.")
+    motivi = []
+    if room.co2 > 1000:
+        motivi.append("CO2 alta")
+    if room.temperature > 30:
+        motivi.append("Temperatura alta")
+    if room.sound > 60:
+        motivi.append("Rumore elevato")
+
+    if motivi:
+        motivo = ", ".join(motivi)
+
+        # Comando alla stanza corrente → invita a spostarsi
+        comando_spostamento = f"sposta_occupanti_in_{target_room.name}"
+        send_room_command(room.name, comando_spostamento)
+
+        # Comando alla stanza target → prepara accoglienza
+        send_room_command(target_room.name, "prepara_accoglienza")
+
+        print(f"📢 {room.name} → '{comando_spostamento}' | "
+              f"{target_room.name} → 'prepara_accoglienza' | Motivo: {motivo}")
+
+
+
+#--- Calcola il punteggio di priorità del bridge--
+
+def bridge_priority_score(bridge_name):
+    rooms = Room.objects.filter(bridge=bridge_name)
+    if not rooms.exists():
+        return 0
+
+    now = timezone.now()
+
+    # Se il timestamp è troppo vecchio, resettiamo
+    latest_score_time = max([room.last_score_time for room in rooms if room.last_score_time], default=None)
+    if latest_score_time and now - latest_score_time > timedelta(seconds=60):
+        print(f"⏳ Bridge '{bridge_name}' ha uno score scaduto, reset a 0")
+        return 0
+
+    # ⬇️ Logica normale del punteggio
+    variation_scores = []
+    for room in rooms:
+        v = 0
+        if all([room.last_temperature, room.temperature]):
+            v += abs(room.temperature - room.last_temperature) / 10
+        if all([room.last_co2, room.co2]):
+            v += abs(room.co2 - room.last_co2) / 1000
+        if all([room.last_sound, room.sound]):
+            v += abs(room.sound - room.last_sound) / 50
+        if all([room.last_light, room.light]):
+            v += abs(room.light - room.last_light) / 1000
+        if all([room.last_humidity, room.humidity]):
+            v += abs(room.humidity - room.last_humidity) / 100
+        variation_scores.append(v)
+
+    variation_score = min(np.mean(variation_scores), 1) if variation_scores else 0
+
+    # Affollamento medio e critici
+    full_rooms = 0
+    total_ratio = 0
+    for room in rooms:
+        if room.room_size:
+            ratio = room.people / room.room_size
+            total_ratio += ratio
+            if ratio >= 0.7:
+                full_rooms += 1
+    avg_occupancy = total_ratio / len(rooms) if rooms else 0
+    occupancy_score = min(avg_occupancy, 1)
+
+    critical_events = 0
+    for room in rooms:
+        if room.co2 and room.co2 > 1000:
+            critical_events += 1
+        if room.sound and room.sound > 60:
+            critical_events += 1
+        if room.temperature and room.temperature > 30:
+            critical_events += 1
+    critical_score = min(critical_events / (len(rooms) * 2), 1)
+
+    final_score = round(0.4 * variation_score + 0.4 * occupancy_score + 0.2 * critical_score, 3)
+
+    # Aggiorna il timestamp
+    rooms.update(last_score_time=now)
+
+    return final_score
 
 
 # Calcolo della distanza tra due coordinate geografiche
@@ -238,155 +339,193 @@ def haversine(lat1, lon1, lat2, lon2):
 
 @csrf_exempt
 def receive_sensor_data(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            bridge_name = data.get('bridge_name', 'missing_bridge')
-            room_name = data.get('room_name', 'missing_name')
-            temperature = data.get('temperature')
-            humidity = data.get('humidity')
-            co2 = data.get('co2')
-            light = data.get('light')
-            sound = data.get('sound')
-            people = data.get('people')
-            room_size = data.get('room_size')
-            latitudine = data.get('latitudine')
-            longitudine = data.get('longitudine')
-            price = data.get('price')
+    if request.method != 'POST':
+        return JsonResponse({"error": "Metodo non valido. Solo POST è consentito."}, status=405)
 
-            print(temperature, humidity, co2, light, sound)
+    try:
+        # --- Parsing dati in arrivo ---
+        data = json.loads(request.body)
+        bridge_name = data.get('bridge_name', 'missing_bridge')
+        room_name = data.get('room_name', 'missing_name')
+        temperature = data.get('temperature')
+        humidity = data.get('humidity')
+        co2 = data.get('co2')
+        light = data.get('light')
+        sound = data.get('sound')
+        people = data.get('people')
+        room_size = data.get('room_size')
+        latitudine = data.get('latitudine')
+        longitudine = data.get('longitudine')
+        price = data.get('price')
+        type = data.get('type')
 
-            # Verifica dati mancanti
-            if not all([temperature, humidity, co2, light, sound]):
-                return JsonResponse({"error": "Dati mancanti"}, status=400)
+        if not all([temperature, humidity, co2, light, sound]):
+            return JsonResponse({"error": "Dati mancanti"}, status=400)
 
-            # -- Ottenere il giorno corrente in italiano --
+        sound = sound / 20 + 20
 
-            # Ottieni il giorno corrente in inglese
-            giorno_eng = datetime.now().strftime("%A")
+        # --- Giorno attuale codificato per il modello prezzo ---
+        giorno_eng = datetime.now().strftime("%A")
+        giorni_tradotti = {
+            "Monday": "Lunedì", "Tuesday": "Martedì", "Wednesday": "Mercoledì",
+            "Thursday": "Giovedì", "Friday": "Venerdì", "Saturday": "Sabato", "Sunday": "Domenica"
+        }
+        giorno = giorni_tradotti.get(giorno_eng, giorno_eng)
 
-            # Mappatura dei giorni della settimana da inglese a italiano senza accenti
-            giorni_tradotti = {
-                "Monday": "Lunedì",
-                "Tuesday": "Martedì",
-                "Wednesday": "Mercoledì",
-                "Thursday": "Giovedì",
-                "Friday": "Venerdì",
-                "Saturday": "Sabato",
-                "Sunday": "Domenica"
+        # --- Eventi nelle vicinanze ---
+        distanza_massima = 10000  # 10 km
+        evento_vicinanze = any(
+            haversine(latitudine, longitudine, e.latitudine, e.longitudine) <= distanza_massima
+            for e in Event.objects.all()
+        )
+
+        # --- ML: Classificazione stanza ---
+        input_data = pd.DataFrame([{
+            'Temperature': temperature,
+            'Humidity': humidity,
+            'Light_scaled': light,
+            'CO2_scaled': co2,
+            'Sound': sound,
+            'Room_Size': room_size,
+            'People': people
+        }])
+        prediction = predict_and_sort_rooms(input_data).iloc[0]
+        predicted_class = int(prediction['predicted_class'])
+        probability = round(prediction['probability'], 3)
+
+        # --- ML: Prezzo predetto ---
+        with open("AppIoT/ml_model/modello_prezzo.pkl", "rb") as file:
+            model, label_encoder = pickle.load(file)
+
+        giorno_codificato = label_encoder.transform([giorno])[0]
+        prezzo_input = pd.DataFrame([{
+            "Capienza Massima": room_size,
+            "Evento nelle Vicinanze": int(evento_vicinanze),
+            "Giorno Codificato": giorno_codificato
+        }])
+        prezzo_predetto = model.predict(prezzo_input)[0]
+        prezzo_arrotondato = 5 * round(prezzo_predetto / 5)
+
+
+        # --- Recupera stanza se già esiste ---
+        room = Room.objects.filter(name=room_name, bridge=bridge_name).first()
+        if room:
+            room.last_temperature = room.temperature
+            room.last_co2 = room.co2
+            room.last_sound = room.sound
+            room.last_light = room.light
+            room.last_humidity = room.humidity
+            room.save()
+
+        # --- Crea/Aggiorna stanza ---
+        room, created = Room.objects.update_or_create(
+            name=room_name,
+            bridge=bridge_name,
+            defaults={
+                'temperature': temperature,
+                'humidity': humidity,
+                'co2': co2,
+                'light': light,
+                'sound': sound,
+                'room_size': room_size,
+                'people': people,
+                'latitudine': latitudine,
+                'longitudine': longitudine,
+                'price': prezzo_arrotondato,
+                'online_status': False,
+                'bestroom': predicted_class,
+                'probability': probability,
+                'last_prediction_time': timezone.now()
             }
+        )
 
-            # Converti il giorno corrente da inglese a italiano senza accenti
-            giorno = giorni_tradotti.get(giorno_eng, giorno_eng)
-            print(f"Giorno corrente (tradotto e normalizzato): {giorno}")
+        print(f"📊 Stanza '{room.name}' classificata come {'Migliore' if predicted_class == 1 else 'Non Ottimale'} con probabilità {probability * 100:.1f}% e prezzo {prezzo_arrotondato}€.")
 
-            # -- Calcolo degli eventi nelle vicinanze --
-            distanza_massima = 10000  # Distanza massima in metri (10km)
-            eventi_vicini = Event.objects.all()
-            evento_vicinanze = 0  # Default: nessun evento vicino
+        PredictionHistory.objects.create(
+            room=room,
+            predicted_class=predicted_class,
+            probability=probability,
+            predicted_price=prezzo_arrotondato,
+            source="arduino"
+        )
 
-            for evento in eventi_vicini:
-                distanza = haversine(latitudine, longitudine, evento.latitudine, evento.longitudine)
-                if distanza <= distanza_massima:
-                    evento_vicinanze = 1
-                    print(f"Evento vicino trovato: {evento.title} a {distanza:.2f} metri.")
-                    break
-            
-                
-            # -- ML -- CLASSIFICAZIONE
-            input_data = pd.DataFrame([{
-                'Temperature': temperature,
-                'Humidity': humidity,
-                'Light_scaled': light,
-                'CO2_scaled': co2,
-                'Sound': sound,
-                'Room_Size': room_size,
-                'People': people
-            }])
-            predicted_room = predict_and_sort_rooms(input_data).iloc[0]
-            predicted_class = int(predicted_room['predicted_class'])
-            probability = round(predicted_room['probability'], 3)
+        SensorHistory.objects.create(
+            room=room,
+            temperature=temperature,
+            humidity=humidity,
+            co2=co2,
+            light=light,
+            sound=sound,
+            people=people
+        )
+        
+        # --- Alert MQTT se serve ---
+        check_and_alert(room)
 
-            # -- ML -- PREDIZIONE PREZZO
-            # Caricare il modello di pricing
-            with open("AppIoT\ml_model\modello_prezzo.pkl", "rb") as file:
-                model, label_encoder = pickle.load(file)
+        # --- Bridge Priority Logic ---
+        new_score = bridge_priority_score(bridge_name)
+        print(f"🎯 Punteggio del bridge '{bridge_name}': {new_score}")
 
-            # Codificare il giorno
-            giorno_codificato = label_encoder.transform([giorno])[0]
+        active_bridges = Room.objects.filter(online_status=True).values_list("bridge", flat=True).distinct()
+        should_upload = all(bridge_priority_score(b) < new_score for b in active_bridges)
+        print(f"🔍 Bridge attivi: {[(b, bridge_priority_score(b)) for b in active_bridges]}")
 
-            # Creare il DataFrame per la predizione del prezzo
-            prezzo_input = pd.DataFrame([{
-                "Capienza Massima": room_size,
-                "Evento nelle Vicinanze": int(evento_vicinanze),
-                "Giorno Codificato": giorno_codificato
-            }])
+        if should_upload:
+            print(f"🚀 Upload dei dati per il bridge '{bridge_name}' con punteggio {new_score}")
 
-            # Fare la predizione del prezzo
-            prezzo_predetto = model.predict(prezzo_input)[0]
-            prezzo_arrotondato = 5 * round(prezzo_predetto / 5)
+            Room.objects.filter(online_status=True).update(online_status=False, adafruit_position=None)
+            stanze_attive = Room.objects.filter(bridge=bridge_name).order_by('-probability')[:3]
 
-            # -- CREAZIONE O AGGIORNAMENTO STANZA NEL DB --
-            room, created = Room.objects.update_or_create(
-                name=room_name,
-                bridge=bridge_name,
-                defaults={
-                    'temperature': temperature,
-                    'humidity': humidity,
-                    'co2': co2,
-                    'light': light,
-                    'sound': sound,
-                    'room_size': room_size,
-                    'people': people,
-                    'latitudine': latitudine,
-                    'longitudine': longitudine,
-                    'price': prezzo_arrotondato,  # Prezzo predetto
-                    'online_status': False,
-                    'bestroom': predicted_class,
-                    'probability': probability
-                }
+            for i, stanza in enumerate(stanze_attive, start=1):
+                stanza.adafruit_position = i
+                stanza.online_status = True
+                stanza.save()
+
+            Room.objects.filter(bridge=bridge_name).exclude(id__in=[s.id for s in stanze_attive]).update(
+                online_status=False,
+                adafruit_position=None
             )
 
-            print(f"Stanza '{room_name}' associata al bridge '{bridge_name}' salvata come Offline.")
-            print(f"📊 Stanza '{room_name}' classificata come {'Migliore' if predicted_class == 1 else 'Non Ottimale'} con probabilità {probability * 100:.1f}% e prezzo {prezzo_arrotondato}€.")
+            for stanza in stanze_attive:
+                pos = stanza.adafruit_position
+                success = send_room_data_to_adafruit(stanza, pos)
+                if success:
+                    print(f"✅ Dati inviati per {stanza.name} su stanza-{pos}")
+                else:
+                    print(f"❌ Fallito invio per {stanza.name}")
 
+        return JsonResponse({
+            "status": "success",
+            "message": f"Dati ricevuti da {room.name}",
+            "room_id": room.id,
+            "classification": predicted_class,
+            "probability": probability,
+            "prezzo_predetto": prezzo_arrotondato
+        }, status=200)
 
-            # ⚠️ Verifica e invio alert
-            check_and_alert(room)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Formato JSON non valido"}, status=400)
+    except Exception as e:
+        print(f"❌ Errore generale: {str(e)}")
+        return JsonResponse({"error": str(e)}, status=500)
 
-            # Verifica se ci sono 3 stanze con lo stesso bridge
-            rooms_same_bridge = Room.objects.filter(bridge=bridge_name)
+#Vista per mostrare lo storico dei sensori
+def storico_sensori(request, room_id):
+    room = Room.objects.get(id=room_id)
+    history = room.sensor_history.order_by('timestamp')[:50]
 
-            # Invia i dati solo se ci sono 3 stanze collegate allo stesso bridge
-            if rooms_same_bridge.count() == 3:
-                print(f"🏠 Trovate 3 stanze con lo stesso bridge '{bridge_name}'. Preparazione invio a Adafruit...")
-                for i, room in enumerate(rooms_same_bridge):
-                    position = i + 1
-                    success = send_room_data_to_adafruit(room, position)
-                    if success:
-                        room.online_status = True
-                        room.adafruit_position = position
-                        room.save()
-                        print(f"✅ Stanza '{room.name}' inviata ad Adafruit come Online (Posizione {position}).")
-                    else:
-                        print(f"❌ Errore nell'invio della stanza '{room.name}' ad Adafruit.")
+    context = {
+        'room': room,
+        'labels': [h.timestamp.strftime("%H:%M") for h in history],
+        'temps': [h.temperature for h in history],
+        'hums': [h.humidity for h in history],
+        'co2s': [h.co2 for h in history],
+        'lights': [h.light for h in history],
+        'sounds': [h.sound for h in history],
+        'people': [h.people for h in history],
+    }
 
-            return JsonResponse({
-                "status": "success",
-                "message": f"Dati ricevuti da {room.name}",
-                "room_id": room.id,
-                "classification": predicted_class,
-                "probability": probability,
-                "prezzo_predetto": prezzo_arrotondato
-            }, status=200)
-
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Formato JSON non valido"}, status=400)
-        except Exception as e:
-            print(f"Errore: {str(e)}")
-            return JsonResponse({"error": str(e)}, status=500)
-
-    return JsonResponse({"error": "Metodo non valido. Solo POST consentito."}, status=405)
+    return render(request, 'storico_sensori.html', context)
 
 
 
@@ -416,10 +555,13 @@ def predict_view(request):
     return JsonResponse({"error": "Invalid request method. Only POST is allowed."}, status=405)
 
 
+def storico_predizioni(request, room_id):
+    room = Room.objects.get(id=room_id)
+    history = room.predictions.all().order_by('-timestamp')[:20]
+    return render(request, 'storico_predizioni.html', {'room': room, 'history': history})
+
 # --------- API FLUTTER ------------
 
-# Crea un ViewSet per gestire le operazioni CRUD: Il ViewSet viene utilizzato per gestire tutte le operazioni REST (GET, POST, PUT, DELETE).
-# Questo RoomViewSet gestirà tutte le operazioni sulle stanze (aule) usando il RoomSerializer
 class RoomViewSet(viewsets.ModelViewSet):
     queryset = Room.objects.all()  # Recupera tutte le stanze dal database
     serializer_class = RoomSerializer  # Usa il serializer per trasformare i dati
@@ -467,7 +609,6 @@ def api_migliori_stanze(request):
     return JsonResponse({'rooms': rooms_data})
 
 
-
 #posizione utente da app flutter
 @csrf_exempt
 def receive_location_data(request):
@@ -508,3 +649,87 @@ def receive_location_data(request):
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Metodo non valido. Solo POST è consentito."}, status=405)
+
+#EVENTI utente da app flutter
+@csrf_exempt
+def api_eventi_utente(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+
+            name = data.get('name', 'Mario')
+            surname = data.get('surname', 'Rossi')
+            eventi = data.get('eventi', [])
+
+            if not name or not eventi:
+                return JsonResponse({"error": "Nome o eventi mancanti"}, status=400)
+
+            utente, _ = User.objects.get_or_create(name=name, surname=surname)
+
+            for evento in eventi:
+                titolo = evento.get('titolo')
+                luogo = evento.get('luogo', '')
+                inizio = evento.get('inizio')  # formato ISO: '2025-03-31T10:00:00'
+                fine = evento.get('fine')
+                latitudine = evento.get('latitudine')
+                longitudine = evento.get('longitudine')
+
+                if not titolo or not inizio or not fine:
+                    continue  # salta eventi incompleti
+
+                UserEvent.objects.get_or_create(
+                    utente=utente,
+                    titolo=titolo,
+                    luogo=luogo,
+                    inizio=datetime.fromisoformat(inizio),
+                    fine=datetime.fromisoformat(fine)
+                )
+
+            return JsonResponse({"message": "Eventi salvati correttamente"})
+
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Formato JSON non valido"}, status=400)
+        except Exception as e:
+            print(f"Errore nel salvataggio degli eventi: {str(e)}")
+            return JsonResponse({"error": str(e)}, status=500)
+
+    return JsonResponse({"error": "Metodo non valido. Solo POST è consentito."}, status=405)
+
+#FEEDBACK STANZA da app flutter
+@csrf_exempt
+def api_feedback_stanza(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+
+            room_id = data.get('room_id')
+            voto = int(data.get('voto'))
+            commento = data.get('commento', '')
+            name = data.get('name', 'Mario')  # o da auth token in futuro
+            surname = data.get('surname', 'Rossi')
+
+            if not (1 <= voto <= 5):
+                return JsonResponse({"error": "Voto fuori scala"}, status=400)
+
+            room = Room.objects.get(id=room_id)
+            utente, _ = User.objects.get_or_create(name=name, surname=surname)
+
+            Feedback.objects.create(
+                room=room,
+                utente=utente,
+                voto=voto,
+                commento=commento
+            )
+
+            return JsonResponse({"message": "Feedback ricevuto!"})
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
+    return JsonResponse({"error": "Metodo non valido. Usa POST."}, status=405)
+
+#Invio notifica all'user
+def send_user_notification(user, message):
+    topic = f"nicodalla99/feeds/utente_{user.id}_notifiche"
+    send_mqtt_command(topic, message)
+    print(f"📲 Notifica inviata a {user.name} {user.surname}: {message}")

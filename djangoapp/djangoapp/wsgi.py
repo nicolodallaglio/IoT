@@ -22,29 +22,3 @@ settings_module = 'djangoapp.settings'
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', settings_module)
 
 application = get_wsgi_application()
-
-"""
-def send_to_adafruit_io():
-    # Imposta le tue credenziali Adafruit IO qui
-    ADAFRUIT_IO_USERNAME = 'nicodalla99'
-    ADAFRUIT_IO_KEY = ''
-
-    url = f'https://io.adafruit.com/api/v2/{ADAFRUIT_IO_USERNAME}/feeds/serverdiprova/data'
-    headers = {'X-AIO-Key': ADAFRUIT_IO_KEY}
-    data = {'value': 1}
-
-    response = requests.post(url, headers=headers, json=data)
-    
-    #Creare un'istanza del modello con il valore impostato su True
-    my_model_instance = MyModel(value=True)
-    # Salvare l'istanza nel database
-    my_model_instance.save()
-
-    if response.status_code == 200:
-        print('Dato inviato con successo a Adafruit IO.')
-    else:
-        print(f'Errore durante l\'invio del dato a Adafruit IO: {response.content}')
-
-# Questa funzione viene chiamata quando il server Django si avvia
-send_to_adafruit_io()
-"""

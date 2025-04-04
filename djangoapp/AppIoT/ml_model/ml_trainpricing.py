@@ -19,7 +19,7 @@ except locale.Error:
         print("⚠️ Impossibile impostare il locale italiano. Verifica la configurazione locale del sistema.")
 
 # Caricare il dataset
-file_path = r'C:\Users\Nicolò\Documents\IoT2025\dataset_aule_sintetico.csv'
+file_path = r'C:\Users\Nicolò\Documents\IoT2025\dataset_prezzo.csv'
 df = pd.read_csv(file_path)
 
 # Codificare la variabile categorica "Giorno della settimana"
@@ -31,7 +31,7 @@ print("Giorni codificati:", list(label_encoder.classes_))
 
 # Selezionare le feature e la variabile target
 X = df[["Capienza Massima", "Evento nelle Vicinanze", "Giorno Codificato"]]
-y = df["Prezzo (€)"]
+y = df["price"]
 
 # Suddividere il dataset in training (80%) e test (20%)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
