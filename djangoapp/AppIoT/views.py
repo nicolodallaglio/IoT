@@ -22,6 +22,8 @@ from AppIoT.mqtt.mqtt_client import send_mqtt_command
 from .models import ( Room, User, Event, UserEvent, PredictionHistory, SensorHistory, Feedback)
 from AppIoT.adafruit.adafruit_client import (
     send_room_data_to_adafruit)
+from geopy.geocoders import Nominatim
+geolocator = Nominatim(user_agent="smartrooms-geocoder")
 
  
 # ---------------- INDEX -------------------------
@@ -94,7 +96,7 @@ def find_optimal_room(user_lat=None, user_lon=None):
 
 def mostra_migliori_stanze(request):
     try:
-        user = User.objects.get(name="Mario", surname="Rossi")
+        user = User.objects.get(name="Riccardo", surname="Reale")
         user_lat, user_lon = user.latitudine, user.longitudine
     except User.DoesNotExist:
         user_lat, user_lon = None, None
@@ -463,36 +465,64 @@ def receive_sensor_data(request):
         check_and_alert(room)
 
         # --- Bridge Priority Logic ---
+        room.last_update = timezone.now()
+        room.save()
+
         new_score = bridge_priority_score(bridge_name)
         print(f"🎯 Punteggio del bridge '{bridge_name}': {new_score}")
 
-        active_bridges = Room.objects.filter(online_status=True).values_list("bridge", flat=True).distinct()
-        should_upload = all(bridge_priority_score(b) < new_score for b in active_bridges)
-        print(f"🔍 Bridge attivi: {[(b, bridge_priority_score(b)) for b in active_bridges]}")
+        # Check se tutte le stanze del bridge sono aggiornate di recente
+        bridge_rooms = Room.objects.filter(bridge=bridge_name)
+        update_threshold = timezone.now() - timedelta(seconds=10)
 
-        if should_upload:
-            print(f"🚀 Upload dei dati per il bridge '{bridge_name}' con punteggio {new_score}")
+        # Debug: stampa stato aggiornamento di ogni stanza del bridge
+        print(f"🧪 Stato aggiornamenti stanze del bridge '{bridge_name}':")
+        for r in bridge_rooms:
+            print(f" - {r.name}: aggiornamento = {r.last_update}")
 
-            Room.objects.filter(online_status=True).update(online_status=False, adafruit_position=None)
-            stanze_attive = Room.objects.filter(bridge=bridge_name).order_by('-probability')[:3]
+        # Solo se tutte le stanze sono aggiornate di recente, procedi
+        if all(r.last_update and r.last_update > update_threshold for r in bridge_rooms):
+            active_bridges = Room.objects.filter(online_status=True).values_list("bridge", flat=True).distinct()
+            should_upload = all(bridge_priority_score(b) < new_score for b in active_bridges)
+            print(f"🔍 Bridge attivi: {[(b, bridge_priority_score(b)) for b in active_bridges]}")
 
-            for i, stanza in enumerate(stanze_attive, start=1):
-                stanza.adafruit_position = i
-                stanza.online_status = True
-                stanza.save()
+            if should_upload:
+                print(f"🚀 Upload dei dati per il bridge '{bridge_name}' con punteggio {new_score}")
 
-            Room.objects.filter(bridge=bridge_name).exclude(id__in=[s.id for s in stanze_attive]).update(
-                online_status=False,
-                adafruit_position=None
-            )
+                # Reset stanze attive
+                Room.objects.filter(online_status=True).update(online_status=False, adafruit_position=None)
 
-            for stanza in stanze_attive:
-                pos = stanza.adafruit_position
-                success = send_room_data_to_adafruit(stanza, pos)
-                if success:
-                    print(f"✅ Dati inviati per {stanza.name} su stanza-{pos}")
-                else:
-                    print(f"❌ Fallito invio per {stanza.name}")
+                # Seleziona le 3 migliori stanze del bridge
+                stanze_attive = bridge_rooms.order_by('-probability')[:3]
+
+                # Assegna posizione e online_status in bulk
+                for i, stanza in enumerate(stanze_attive, start=1):
+                    Room.objects.filter(id=stanza.id).update(adafruit_position=i, online_status=True)
+
+                # Ricarica dal DB le stanze aggiornate
+                stanze_attive = Room.objects.filter(id__in=[s.id for s in stanze_attive])
+
+                # Disattiva le altre stanze
+                Room.objects.filter(bridge=bridge_name).exclude(id__in=[s.id for s in stanze_attive]).update(
+                    online_status=False,
+                    adafruit_position=None
+                )
+
+                # 🔁 Ricarica le stanze dal DB per avere la versione aggiornata
+                stanze_attive = Room.objects.filter(id__in=[s.id for s in stanze_attive])
+
+                print("📦 Stanze selezionate per upload Adafruit:")
+                for stanza in stanze_attive:
+                    pos = stanza.adafruit_position
+                    print(f" - {stanza.name} → posizione: {pos}, probabilità: {stanza.probability}")
+                    success = send_room_data_to_adafruit(stanza, pos)
+                    if success:
+                        print(f"✅ Dati inviati per {stanza.name} su stanza-{pos}")
+                    else:
+                        print(f"❌ Fallito invio per {stanza.name}")
+        else:
+            print(f"⏳ In attesa che tutte le stanze del bridge '{bridge_name}' siano aggiornate...")
+
 
         return JsonResponse({
             "status": "success",
@@ -571,9 +601,9 @@ class RoomViewSet(viewsets.ModelViewSet):
 def api_migliori_stanze(request):
     # Recupera l'ultima posizione salvata nel database
     try:
-        user = User.objects.get(name="Mario", surname="Rossi")
+        user = User.objects.get(name="Riccardo", surname="Reale")
         user_lat, user_lon = user.latitudine, user.longitudine
-        print(f"Ultima posizione utente trovata: Latitudine={user_lat}, Longitudine={user_lon}")
+        print(f"Ultima posizione utente trovata: Nome={user.name},Cognome={user.surname},Latitudine={user_lat}, Longitudine={user_lon}")
     except User.DoesNotExist:
         print("❌ Errore: Nessuna posizione salvata per l'utente")
         return JsonResponse({'error': 'Nessuna posizione utente salvata'}, status=404)
@@ -618,18 +648,21 @@ def receive_location_data(request):
             data = json.loads(request.body)
 
             # Estrai longitudine e latitudine dai dati
+            name= data.get('name')
+            surname= data.get('surname')
             latitudine = data.get('latitudine')
             longitudine = data.get('longitudine')
             
+            """name = "Riccardo"
+            surnarme = "Reale" """
             # Verifica la validità delle coordinate
+            if name is None or surname is None:
+                return JsonResponse({"error": "Nome e Cognome sono obbligatori"}, status=400)
             if latitudine is None or longitudine is None:
                 return JsonResponse({"error": "Latitudine e Longitudine sono obbligatorie"}, status=400)
             if not isinstance(latitudine, (int, float)) or not isinstance(longitudine, (int, float)):
                 return JsonResponse({"error": "Latitudine e Longitudine devono essere numerici"}, status=400)
 
-            # Nome e cognome fissi
-            name = "Mario"
-            surname = "Rossi"
 
             # Salva o aggiorna l'utente nel database
             user, created = User.objects.update_or_create(
@@ -657,32 +690,58 @@ def api_eventi_utente(request):
         try:
             data = json.loads(request.body)
 
-            name = data.get('name', 'Mario')
-            surname = data.get('surname', 'Rossi')
+            name = data.get('name', '')
+            surname = data.get('surname', '')
             eventi = data.get('eventi', [])
 
             if not name or not eventi:
                 return JsonResponse({"error": "Nome o eventi mancanti"}, status=400)
+
+            print(f"📆 Eventi ricevuti per {name} {surname}:")
+            for ev in eventi:
+                print(f"  • {ev.get('titolo')} - {ev.get('inizio')} → {ev.get('fine')} @ {ev.get('luogo', 'N/D')}")
 
             utente, _ = User.objects.get_or_create(name=name, surname=surname)
 
             for evento in eventi:
                 titolo = evento.get('titolo')
                 luogo = evento.get('luogo', '')
-                inizio = evento.get('inizio')  # formato ISO: '2025-03-31T10:00:00'
+                inizio = evento.get('inizio')
                 fine = evento.get('fine')
-                latitudine = evento.get('latitudine')
-                longitudine = evento.get('longitudine')
 
                 if not titolo or not inizio or not fine:
-                    continue  # salta eventi incompleti
+                    continue
+
+                print(f"🔍 Evento: {titolo}")
+
+                # Ignora completamente le lat/lon arrivate
+                latitudine = None
+                longitudine = None
+
+                try:
+                    luogo_clean = unicodedata.normalize('NFKD', luogo).encode('ascii', 'ignore').decode('utf-8')
+                    luogo_clean = pulisci_luogo(luogo)
+                    location = geolocator.geocode(luogo_clean)
+                    if location:
+                        latitudine = location.latitude
+                        longitudine = location.longitude
+                        print(f"📍 Geocodificato '{luogo}' → ({latitudine}, {longitudine})")
+                    else:
+                        print(f"⚠️ Nominatim NON ha trovato il luogo: '{luogo}'")
+                except Exception as e:
+                    print(f"❌ Errore geocoding '{luogo}': {e}")
+
+                # Conversione timestamp ISO con Z
+                fromiso = lambda s: datetime.fromisoformat(s.replace("Z", "+00:00"))
 
                 UserEvent.objects.get_or_create(
                     utente=utente,
                     titolo=titolo,
                     luogo=luogo,
-                    inizio=datetime.fromisoformat(inizio),
-                    fine=datetime.fromisoformat(fine)
+                    inizio=fromiso(inizio),
+                    fine=fromiso(fine),
+                    latitudine=latitudine,
+                    longitudine=longitudine
                 )
 
             return JsonResponse({"message": "Eventi salvati correttamente"})
@@ -690,29 +749,67 @@ def api_eventi_utente(request):
         except json.JSONDecodeError:
             return JsonResponse({"error": "Formato JSON non valido"}, status=400)
         except Exception as e:
-            print(f"Errore nel salvataggio degli eventi: {str(e)}")
+            print(f"❌ Errore nel salvataggio degli eventi: {str(e)}")
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Metodo non valido. Solo POST è consentito."}, status=405)
 
-#FEEDBACK STANZA da app flutter
+import re
+import unicodedata
+
+def pulisci_luogo(luogo_raw):
+    # Rimuove virgolette e caratteri non ASCII
+    luogo = unicodedata.normalize('NFKD', luogo_raw).encode('ascii', 'ignore').decode('utf-8')
+    # Rimuove eventuali CAP e provincia
+    luogo = re.sub(r'\d{5}(?:\s?[A-Z]{2})?', '', luogo)
+    # Limita a max 2 componenti
+    componenti = [x.strip() for x in luogo.split(',')]
+    return ", ".join(componenti[:2])
+
+#FEEDBACK stanza dell'utente da app flutter
 @csrf_exempt
 def api_feedback_stanza(request):
     if request.method == 'POST':
         try:
-            data = json.loads(request.body)
+            print("Richiesta POST ricevuta")
 
-            room_id = data.get('room_id')
+            data = json.loads(request.body)
+            print("Dati ricevuti:", data)
+
+            name_stanza = data.get('name_stanza')
+            latitudine = data.get('latitudine')
+            longitudine = data.get('longitudine')
             voto = int(data.get('voto'))
             commento = data.get('commento', '')
-            name = data.get('name', 'Mario')  # o da auth token in futuro
-            surname = data.get('surname', 'Rossi')
+            name = data.get('name')  # nome utente
+            surname = data.get('surname')
+
+            print(f"Stanza: {name_stanza}, Lat: {latitudine}, Lon: {longitudine}")
+            print(f"Voto: {voto}, Commento: {commento}")
+            print(f"Utente: {name} {surname}")
 
             if not (1 <= voto <= 5):
+                print("Errore: voto fuori scala")
                 return JsonResponse({"error": "Voto fuori scala"}, status=400)
 
-            room = Room.objects.get(id=room_id)
-            utente, _ = User.objects.get_or_create(name=name, surname=surname)
+            if not all([name_stanza, latitudine, longitudine]):
+                print("Errore: dati stanza incompleti")
+                return JsonResponse({"error": "Dati stanza incompleti"}, status=400)
+
+            room = Room.objects.filter(
+                name=name_stanza,
+                latitudine=latitudine,
+                longitudine=longitudine
+            ).first()
+
+            if not room:
+                print("Errore: stanza non trovata")
+                return JsonResponse({"error": "Stanza non trovata"}, status=404)
+
+            print("Stanza trovata:", room)
+
+            utente, created = User.objects.get_or_create(name=name, surname=surname)
+            print("Utente ottenuto:", utente, "- Creato nuovo?" , created)
 
             Feedback.objects.create(
                 room=room,
@@ -721,12 +818,17 @@ def api_feedback_stanza(request):
                 commento=commento
             )
 
+            print("Feedback creato con successo")
+
             return JsonResponse({"message": "Feedback ricevuto!"})
 
         except Exception as e:
+            print("Errore eccezione:", str(e))
             return JsonResponse({"error": str(e)}, status=500)
 
+    print("Metodo non valido")
     return JsonResponse({"error": "Metodo non valido. Usa POST."}, status=405)
+
 
 #Invio notifica all'user
 def send_user_notification(user, message):
