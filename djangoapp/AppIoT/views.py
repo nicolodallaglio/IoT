@@ -1,7 +1,6 @@
 from django.shortcuts import render
 from django.views import View
 from django.views.generic import ListView
-from django.shortcuts import render
 from django.http import (HttpResponse, JsonResponse)
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets
@@ -123,15 +122,15 @@ def generate_status(room):
         "sound": "HIGH" if room.sound > 50 else "OK"
     }
 
-# Funzione per inviare un avviso tramite MQTT
-def send_alert_mqtt(room, alert_type, value, severity="WARNING"):
+# Funzione per inviare un alert MQTT
+def send_alert_mqtt(room, value, severity="WARNING"):
     if severity == "CRITICAL":
         topic = "nicodalla99/feeds/bridge.alert"
     else:
-        feed_room = f"stanza-{room.adafruit_position}"  # Es. stanza-1
-        topic = f"nicodalla99/feeds/{feed_room}.alert"
+        topic = "nicodalla99/feeds/bridge.warning"
 
-    payload = f"[{severity}] {alert_type}: {value} in {room.name}"
+    #payload = f"[{severity}] {alert_type}: {value} in {room.name}"
+    payload = f"{value} in {room.name}"
 
     try:
         result = send_mqtt_command(topic, payload)
@@ -143,68 +142,52 @@ def send_alert_mqtt(room, alert_type, value, severity="WARNING"):
         print(f"❌ Errore durante l'invio MQTT su {topic}: {e}")
 
 
-
-# Funzione per inviare un comando specifico a una stanza
-def send_room_command(room_name, command):  
-    topic = f"{room_name}/comando"
-    payload = {"action": command}
-    send_mqtt_command(topic, payload)
-    print(f"🚀 Comando inviato tramite MQTT a {room_name}: {payload}")
-
 # Funzione per verificare e inviare alert se necessario
-def check_and_alert(room):
+def check_and_alert(room, bridge_name):
     # Alert gravi (CRITICAL)
     if room.temperature > 50 and room.co2 > 2000:
-        alert_message = f"Allarme incendio nella {room.name}: {room.temperature}°C e {room.co2} ppm"
-        send_alert_mqtt(room, "Allarme incendio", alert_message, severity="CRITICAL")
-        send_room_command(room.name, "emergenza_evacuazione")
+        alert_message = f"[ALERT:{room.name}:{bridge_name}] : Allarme incendio: {room.temperature}°C e {room.co2} ppm"
+        send_alert_mqtt(room, alert_message, severity="CRITICAL")
         print(alert_message)
 
     if room.people >= room.room_size:
-        alert_message = f"Capacità massima raggiunta nella {room.name}: {room.people} persone"
-        send_alert_mqtt(room, "Capacità massima", alert_message, severity="CRITICAL")
-        send_room_command(room.name, "blocco_ingressi")
+        alert_message = f"[ALERT:{room.name}:{bridge_name}] : Capacita' massima raggiunta: {room.people} persone"
+        send_alert_mqtt(room, alert_message, severity="CRITICAL")
         print(alert_message)
 
     # Alert meno gravi (WARNING)
-    if room.temperature > 30:
-        alert_message = f"Alta temperatura nella {room.name}: {room.temperature}°C"
-        send_alert_mqtt(room, "Alta temperatura", alert_message)
-        send_room_command(room.name, "attiva_ventilazione")
+    if room.temperature > 26:
+        alert_message = f"[WARNING:{room.name}:{bridge_name}] : Alta temperatura: {room.temperature} gradi"
+        send_alert_mqtt(room, alert_message)
         print(alert_message)
 
-    if room.co2 > 500:
-        alert_message = f"CO2 elevata nella {room.name}: {room.co2} ppm"
-        send_alert_mqtt(room, "CO2 alta", alert_message)
-        send_room_command(room.name, "apri_finestra")
+    if room.co2 > 750:
+        alert_message = f"[WARNING:{room.name}:{bridge_name}] : CO2 elevata: {room.co2} ppm"
+        send_alert_mqtt(room, alert_message)
         print(alert_message)
 
     if room.light < 200:
-        alert_message = f"Luce molto bassa nella {room.name}: {room.light} lux"
-        send_alert_mqtt(room, "Luce molto bassa", alert_message)
-        send_room_command(room.name, "accendi_luci")
+        alert_message = f"[WARNING:{room.name}:{bridge_name}] : Luce molto bassa: {room.light} lux"
+        send_alert_mqtt(room, alert_message)
         print(alert_message)
 
     if room.sound > 50:
-        alert_message = f"Rumore elevato nella {room.name}: {room.sound} dB"
-        send_alert_mqtt(room, "Rumore alto", alert_message)
-        send_room_command(room.name, "mostra_cartello_silenzio")
+        alert_message = f"[WARNING:{room.name}:{bridge_name}] : Rumore elevato: {room.sound} dB"
+        send_alert_mqtt(room, alert_message)
         print(alert_message)
 
     if room.people > (room.room_size / 2):
-        alert_message = f"Metà capienza raggiunta nella {room.name}: {room.people} persone"
-        send_alert_mqtt(room, "Metà capienza", alert_message)
+        alert_message = f"[WARNING:{room.name}:{bridge_name}] : Meta' capienza raggiunta {room.name}: {room.people} persone"
+        send_alert_mqtt(room, alert_message)
         print(alert_message)
 
     if room.people > (room.room_size / 2 + 10):
-        alert_message = f"Troppo affollamento nella {room.name}: {room.people} persone"
-        send_alert_mqtt(room, "Troppo affollato", alert_message)
-        send_room_command(room.name, "limita_accessi")
+        alert_message = f"[WARNING:{room.name}:{bridge_name}] : Troppo affollamento: {room.people} persone"
+        send_alert_mqtt(room, alert_message)
         print(alert_message)
     
-    # Comunicazione con altre stanze se condizioni critiche
-    room_communication_logic(room)
-
+    
+    #NOTIFICA ALL'UTENTE FLUTTER
     # Se ci sono utenti associati alla stanza, notifica
     utenti_nella_stanza = User.objects.filter(latitudine=room.latitudine, longitudine=room.longitudine)
 
@@ -215,48 +198,6 @@ def check_and_alert(room):
             send_user_notification(user, f"Rumore elevato in {room.name}. Cerca una stanza più silenziosa.")
         elif room.people >= room.room_size:
             send_user_notification(user, f"Troppa gente in {room.name}. Raggiunta la capienza massima.")
-
-
-
-def room_communication_logic(room):
-    gruppo = room.adafruit_position
-    if not gruppo:
-        return  # Nessuna posizione Adafruit assegnata
-
-    candidate_rooms = Room.objects.filter(adafruit_position=gruppo).exclude(id=room.id)
-
-    # Stanze valide: poco affollate e classificate come ottimali
-    stanze_valide = [
-        r for r in candidate_rooms
-        if r.people < (r.room_size * 0.5) and r.bestroom == 1
-    ]
-
-    if not stanze_valide:
-        return
-
-    # Trova la migliore in base al comfort
-    target_room = max(stanze_valide, key=lambda r: calculate_rating(r))
-
-    motivi = []
-    if room.co2 > 1000:
-        motivi.append("CO2 alta")
-    if room.temperature > 30:
-        motivi.append("Temperatura alta")
-    if room.sound > 60:
-        motivi.append("Rumore elevato")
-
-    if motivi:
-        motivo = ", ".join(motivi)
-
-        # Comando alla stanza corrente → invita a spostarsi
-        comando_spostamento = f"sposta_occupanti_in_{target_room.name}"
-        send_room_command(room.name, comando_spostamento)
-
-        # Comando alla stanza target → prepara accoglienza
-        send_room_command(target_room.name, "prepara_accoglienza")
-
-        print(f"📢 {room.name} → '{comando_spostamento}' | "
-              f"{target_room.name} → 'prepara_accoglienza' | Motivo: {motivo}")
 
 
 
@@ -437,7 +378,8 @@ def receive_sensor_data(request):
                 'online_status': False,
                 'bestroom': predicted_class,
                 'probability': probability,
-                'last_prediction_time': timezone.now()
+                'last_prediction_time': timezone.now(),
+                'type': type
             }
         )
 
@@ -462,7 +404,7 @@ def receive_sensor_data(request):
         )
         
         # --- Alert MQTT se serve ---
-        check_and_alert(room)
+        check_and_alert(room, bridge_name)
 
         # --- Bridge Priority Logic ---
         room.last_update = timezone.now()
@@ -620,6 +562,7 @@ def api_migliori_stanze(request):
     for room in migliori_stanze:
         rooms_data.append({
             'name': room.name,
+            'type': room.type,   
             'price': round(room.price, 1),               # Prezzo arrotondato
             'temperature': round(room.temperature, 1),   # Temperatura arrotondata
             'humidity': round(room.humidity, 1),         # Umidità arrotondata
@@ -829,9 +772,10 @@ def api_feedback_stanza(request):
     print("Metodo non valido")
     return JsonResponse({"error": "Metodo non valido. Usa POST."}, status=405)
 
-
+#se sono in una stanza e un'altra stanza prende fuoco mando una notifica agli utenti
 #Invio notifica all'user
 def send_user_notification(user, message):
-    topic = f"nicodalla99/feeds/utente_{user.id}_notifiche"
+    #userId=3
+    topic = f"nicodalla99/feeds/utente_3_notifiche"
     send_mqtt_command(topic, message)
-    print(f"📲 Notifica inviata a {user.name} {user.surname}: {message}")
+    print(f"Notifica inviata a {user.name} {user.surname} {user.id} sull'app Flutter: {message}")

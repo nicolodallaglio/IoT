@@ -1,60 +1,49 @@
-import os 
 import pandas as pd
 import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import accuracy_score, classification_report
 
 # Carica il dataset
-file = r'C:\Users\Nicolò\Documents\IoT2025\dataset.csv'
-dataset = pd.read_csv(file)
+file_path = r'C:\Users\Nicolò\Documents\IoT2025\dataset.csv'
+dataset = pd.read_csv(file_path)
 
-# Pre-elabora il dataset
+# Feature e target
 X = dataset[['Temperature', 'Humidity', 'Light_scaled', 'CO2_scaled', 'Sound', 'Room_Size', 'People']]
 y = dataset['BestRoom']
 
-# Suddividi il dataset in set di addestramento e test
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.3, random_state=42, stratify=y
+)
 
-# Normalizzazione
+# Standardizzazione
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
-# Modello di classificazione con Pruning
+# 🌱 Modello molto semplice (forte underfitting)
 model = DecisionTreeClassifier(
     random_state=42,
-    max_depth=7,
-    min_samples_split=5,
-    min_samples_leaf=2,
-    ccp_alpha=0.02
+    max_depth=1,             # solo una decisione
+    min_samples_split=50,    # evita split frequenti
+    min_samples_leaf=25,     # ogni foglia ha molti campioni
+    ccp_alpha=0.2            # pruning aggressivo
 )
 
-# Addestramento del modello
+# Addestramento
 model.fit(X_train_scaled, y_train)
 
-# Predizioni su train e test
+# Predizioni e valutazione
 y_train_pred = model.predict(X_train_scaled)
 y_test_pred = model.predict(X_test_scaled)
 
-# Accuratezza su train e test
-train_accuracy = accuracy_score(y_train, y_train_pred)
-test_accuracy = accuracy_score(y_test, y_test_pred)
+print("📊 Accuracy TRAIN:", accuracy_score(y_train, y_train_pred))
+print("📊 Accuracy TEST :", accuracy_score(y_test, y_test_pred))
+print("\n📄 Classification Report (TEST):")
+print(classification_report(y_test, y_test_pred))
 
-# Report di classificazione su train e test
-train_report = classification_report(y_train, y_train_pred)
-test_report = classification_report(y_test, y_test_pred)
-
-print(f"🔍 METRICHE TRAINING:")
-print(f"Accuratezza (Train): {train_accuracy:.4f}")
-print(f"Report di Classificazione (Train):\n{train_report}")
-
-print(f"🔍 METRICHE TEST:")
-print(f"Accuratezza (Test): {test_accuracy:.4f}")
-print(f"Report di Classificazione (Test):\n{test_report}")
-
-# Salvataggio del modello e dello scaler
-joblib.dump(model, 'occupancy_model.pkl')
-joblib.dump(scaler, 'scaler.pkl')
-print("✅ Modello e scaler salvati con successo!")
+# Salvataggio
+joblib.dump(model, "occupancy_model_very_underfit.pkl")
+joblib.dump(scaler, "scaler.pkl")

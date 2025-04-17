@@ -65,7 +65,7 @@ def send_room_data_to_adafruit(room, position):
         create_group_if_not_exists(group_name)
 
         # Crea i feed necessari nel gruppo
-        feed_keys = ["temperature", "humidity", "co2", "light", "sound", "occupancy", "status", "name"]
+        feed_keys = ["temperature", "humidity", "co2", "light", "sound", "occupancy", "name"]
         for key in feed_keys:
             print(f"🔧 Verifica/creazione feed '{key}' nel gruppo '{group_name}'...")
             create_feed_if_not_exists(key, group_name)
@@ -78,7 +78,6 @@ def send_room_data_to_adafruit(room, position):
             "light": room.light,
             "sound": room.sound,
             "occupancy": room.people,
-            "status": "online" if room.online_status else "offline",
             "name": room.name,
         }
 

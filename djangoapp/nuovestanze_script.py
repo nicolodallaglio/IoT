@@ -5,33 +5,15 @@ import random
 
 url = "http://127.0.0.1:8000/api/receive_sensor_data/"
 
-# Lista delle stanze simulate
-stanze = [
-    {
-        "bridge_name": "bridge_piano2",
-        "room_name": "Aula D - Perfetta",
-        "room_size": 70,
-        "latitudine": 44.6290,
-        "longitudine": 10.9488,
-        "type": "studio"
-    },
-    {
-        "bridge_name": "bridge_piano2",
-        "room_name": "Aula E - Rumorosa",
-        "room_size": 50,
-        "latitudine": 44.6291,
-        "longitudine": 10.9489,
-        "type": "studio"
-    },
-    {
-        "bridge_name": "bridge_piano2",
-        "room_name": "Aula F - CO2 Alta",
-        "room_size": 50,
-        "latitudine": 44.6292,
-        "longitudine": 10.9490,
-        "type": "studio"
-    }
-]
+# Stanza unica simulata
+stanza = {
+    "bridge_name": "bridge3",
+    "room_name": "Aula C",
+    "room_size": 100,
+    "latitudine": 44.6290,
+    "longitudine": 10.9488,
+    "type": "studio"
+}
 
 # Funzione per generare dati sensori
 def genera_dati_sensori(room_size):
@@ -46,27 +28,22 @@ def genera_dati_sensori(room_size):
 
 # Loop infinito ogni 60 secondi
 while True:
-    print(f"\n🔁 Inizio invio dati stanze...")
+    print(f"\n🔁 Invio dati simulazione per: {stanza['room_name']}")
 
-    dati_stanze = []
-    for base in stanze:
-        data = base.copy()
-        data.update(genera_dati_sensori(base["room_size"]))
-        data["room_name"] = data["room_name"].strip()
-        data["bridge_name"] = data["bridge_name"].strip()
-        dati_stanze.append(data)
+    data = stanza.copy()
+    data.update(genera_dati_sensori(stanza["room_size"]))
+    data["room_name"] = data["room_name"].strip()
+    data["bridge_name"] = data["bridge_name"].strip()
 
-    for idx, data in enumerate(dati_stanze, start=1):
-        print(f"🔹 Invio dati simulazione {idx}: {data['room_name']}")
-        try:
-            response = requests.post(url, json=data)
-            print("✅ Status code:", response.status_code)
-            print("📬 Risposta:", response.json())
-        except json.JSONDecodeError:
-            print("❌ Errore: risposta non JSON")
-            print("Contenuto:", response.text)
-        except Exception as e:
-            print("❌ Eccezione:", e)
+    try:
+        response = requests.post(url, json=data)
+        print("✅ Status code:", response.status_code)
+        print("📬 Risposta:", response.json())
+    except json.JSONDecodeError:
+        print("❌ Errore: risposta non JSON")
+        print("Contenuto:", response.text)
+    except Exception as e:
+        print("❌ Eccezione:", e)
 
-    print("⏱ Attesa 60 secondi prima del prossimo ciclo...\n")
+    print("⏱ Attesa 60 secondi prima del prossimo invio...\n")
     time.sleep(60)

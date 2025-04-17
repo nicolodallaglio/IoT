@@ -3,7 +3,7 @@ from django.db import models
 class Room(models.Model):
     name = models.CharField(max_length=100)
     bridge = models.CharField(max_length=100, null=True, blank=True)  # Identificativo IoT
-    type = models.CharField(max_length=100, default='generico')
+    type = models.CharField(max_length=100, null=True, blank=True)  # Tipo di stanza (studio, lavoro)
     price = models.FloatField(default=0.0)
 
     temperature = models.FloatField(default=0)
