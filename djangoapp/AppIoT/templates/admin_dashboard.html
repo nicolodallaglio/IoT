@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard Admin - SmartRooms</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .bridge { margin-bottom: 40px; }
+        .bridge h2 { margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        th { background: #eee; }
+        .online { color: green; font-weight: bold; }
+        .offline { color: red; font-weight: bold; }
+        .alert-ok { color: green; font-weight: bold; }
+        .alert-critical { color: red; font-weight: bold; }
+        .alert-warning { color: orange; font-weight: bold; }
+        .last-update { font-size: 0.9em; color: gray; }
+    </style>
+    <script>
+        // Refresh automatico ogni 20 secondi
+        setInterval(() => window.location.reload(), 20000);
+    </script>
+</head>
+<body>
+    <h1>SmartRooms - Dashboard Admin</h1>
+
+    {% for bridge, stanze in bridges.items %}
+    <div class="bridge">
+        <h2>Bridge: {{ bridge }} ({{ stanze|length }} stanze)</h2>
+        <p class="last-update">Ultimo aggiornamento: {{ stanze.0.last_update|date:"d/m/Y H:i:s" }}</p>
+
+        <table>
+            <tr>
+                <th>Nome</th>
+                <th>Probabilità</th>
+                <th>Bestroom</th>
+                <th>Online</th>
+                <th>Ultimo Update</th>
+                <th>Alert</th>
+                <th>Storico</th>
+            </tr>
+            {% for room in stanze %}
+            <tr>
+                <td>{{ room.name }}</td>
+                <td>{{ room.probability|floatformat:2 }}</td>
+                <td>{{ room.bestroom }}</td>
+                <td class="{% if room.online_status %}online{% else %}offline{% endif %}">
+                    {% if room.online_status %}✔️{% else %}❌{% endif %}
+                </td>
+                <td>{{ room.last_update|date:"H:i:s" }}</td>
+                <td class="{% if room.alert_level == 'OK' %}alert-ok{% elif room.alert_level == 'WARNING' %}alert-warning{% else %}alert-critical{% endif %}">{{ room.alert_level }}</td>
+                <td><a href="/storico_sensori/{{ room.id }}">📊</a></td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endfor %}
+</body>
+</html>

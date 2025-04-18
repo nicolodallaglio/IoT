@@ -23,7 +23,7 @@ scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
-# 🌱 Modello molto semplice (forte underfitting)
+# Modello molto semplice (forte underfitting)
 model = DecisionTreeClassifier(
     random_state=42,
     max_depth=1,             # solo una decisione
@@ -39,9 +39,9 @@ model.fit(X_train_scaled, y_train)
 y_train_pred = model.predict(X_train_scaled)
 y_test_pred = model.predict(X_test_scaled)
 
-print("📊 Accuracy TRAIN:", accuracy_score(y_train, y_train_pred))
-print("📊 Accuracy TEST :", accuracy_score(y_test, y_test_pred))
-print("\n📄 Classification Report (TEST):")
+print("Accuracy TRAIN:", accuracy_score(y_train, y_train_pred))
+print("Accuracy TEST :", accuracy_score(y_test, y_test_pred))
+print("\nClassification Report (TEST):")
 print(classification_report(y_test, y_test_pred))
 
 # Salvataggio

@@ -8,23 +8,20 @@ client = mqtt.Client()
 # Callback per la connessione
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print("✅ Connesso al broker MQTT")
-        client.subscribe("bridge/comunicazione")
+        print("Debug: Connesso al broker MQTT")
         client.subscribe("bridge/alert")
-        client.subscribe("stanza-1/status")
-        client.subscribe("stanza-2/status")
-        client.subscribe("stanza-3/status")
+        client.subscribe("bridge/warning")
     else:
-        print(f"❌ Connessione fallita al broker MQTT con codice: {rc}")
+        print(f"Error: Connessione fallita al broker MQTT con codice: {rc}")
 
 
-# Callback per la ricezione dei messaggi
+"""# Callback per la ricezione dei messaggi
 def on_message(client, userdata, msg):
-    print(f"📥 Messaggio ricevuto da {msg.topic}: {msg.payload.decode()}")
+    print(f"Messaggio ricevuto da {msg.topic}: {msg.payload.decode()}")
     payload = json.loads(msg.payload.decode())
-    handle_message(msg.topic, payload)
+    handle_message(msg.topic, payload)"""
 
-# Gestore dei messaggi ricevuti
+"""# Gestore dei messaggi ricevuti
 def handle_message(topic, payload):
     try:
         # Identifica la stanza che ha pubblicato lo stato
@@ -80,7 +77,7 @@ def handle_message(topic, payload):
                 })
 
     except Exception as e:
-        print(f"❌ Errore durante handle_message: {str(e)}")
+        print(f"Errore durante handle_message: {str(e)}")"""
 
 
 # Invio comando tramite MQTT
@@ -91,7 +88,7 @@ def send_mqtt_command(topic, payload):
 
         # Verifica lo stato della connessione prima di inviare
         if not client.is_connected():
-            print("❗ Client non connesso, tentativo di riconnessione...")
+            print("Errore: Client mqtt non connesso, tentativo di riconnessione...")
             client.reconnect()
 
         # Pubblica il messaggio e ottieni il risultato
@@ -100,19 +97,17 @@ def send_mqtt_command(topic, payload):
         # Verifica il risultato della pubblicazione
         status = result.rc
         if status == mqtt.MQTT_ERR_SUCCESS:
-            print(f"✅ Comando inviato a {topic}: {payload}")
             return True
         else:
-            print(f"❌ Errore nell'invio comando MQTT: Codice {status}")
+            print(f"Errore: Errore nell'invio comando MQTT: Codice {status}")
             return False
     except Exception as e:
-        print(f"❌ Errore nell'invio comando MQTT: {str(e)}")
+        print(f"Errore: Errore nell'invio comando MQTT: {str(e)}")
         return False
 
 
 # Configurazione del client
 client.on_connect = on_connect
-client.on_message = on_message
 client.username_pw_set(settings.ADAFRUIT_AIO_USERNAME, settings.ADAFRUIT_AIO_KEY)
 
 # Avvia la connessione

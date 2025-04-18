@@ -18,7 +18,7 @@ def create_group_if_not_exists(group_name):
             aio.create_group(group)
             print(f"Gruppo '{group_name}' creato correttamente.")
         except Exception as e:
-            print(f"Errore nella creazione del gruppo '{group_name}': {e}")
+            print(f"Errore: errore nella creazione del gruppo '{group_name}': {e}")
 
 # Crea un feed su Adafruit IO se non esiste già
 def create_feed_if_not_exists(feed_name, group_name):
@@ -50,18 +50,18 @@ def create_feed_if_not_exists(feed_name, group_name):
 def send_to_adafruit(feed_name, value):
     try:
         aio.send(feed_name, value)
-        print(f"✅ Dato inviato a {feed_name}: {value}")
+        print(f"Debug: Dato inviato a {feed_name}: {value}")
     except Exception as e:
-        print(f"❌ Errore nell'invio a {feed_name}: {e}")
+        print(f"Errore: errore nell'invio a {feed_name}: {e}")
 
 
 def send_room_data_to_adafruit(room, position):
     try:
         group_name = f"stanza-{position}"
-        print(f"\n📦 Inizio invio dati per la stanza: {room.name} (gruppo: {group_name})")
+        print(f"\n Debug: Inizio invio dati per la stanza: {room.name} (gruppo: {group_name})")
 
         # Crea gruppo se non esiste
-        print(f"🔍 Verifica esistenza gruppo '{group_name}'...")
+        print(f" Debug: Verifica esistenza gruppo '{group_name}'...")
         create_group_if_not_exists(group_name)
 
         # Crea i feed necessari nel gruppo
@@ -84,13 +84,13 @@ def send_room_data_to_adafruit(room, position):
         # Invio dei dati uno ad uno
         for key, value in data.items():
             feed_name = f"{group_name}.{key}"
-            print(f"🚀 Invio dato → Feed: {feed_name} | Valore: {value}")
+            print(f"Debug: Invio dato → Feed: {feed_name} | Valore: {value}")
             send_to_adafruit(feed_name, value)
             time.sleep(0.3)  # Ritardo per evitare rate limit
 
-        print(f"✅ Tutti i dati della stanza '{room.name}' sono stati inviati correttamente su Adafruit nel gruppo '{group_name}'\n")
+        print(f"Debug: Tutti i dati della stanza '{room.name}' sono stati inviati correttamente su Adafruit nel gruppo '{group_name}'\n")
         return True
 
     except Exception as e:
-        print(f"❌ Errore durante l'invio dei dati per la stanza '{room.name}': {e}")
+        print(f"Errore: Errore durante l'invio dei dati per la stanza '{room.name}': {e}")
         return False

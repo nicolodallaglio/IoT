@@ -5,7 +5,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 ADAFRUIT_AIO_USERNAME = "nicodalla99"
-ADAFRUIT_AIO_KEY      = "aio_iAYf47nIRLwS7SO020RyP3thGnNn"
+ADAFRUIT_AIO_KEY      = "aio_Nmgf31z2Sd530yAMLfe6o8Xs31gm"
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/

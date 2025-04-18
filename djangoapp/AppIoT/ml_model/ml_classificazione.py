@@ -15,9 +15,9 @@ SCALER_PATH = os.path.join(settings.BASE_DIR, 'AppIoT', 'ml_model', 'scaler.pkl'
 try:
     model = joblib.load(MODEL_PATH)
     scaler = joblib.load(SCALER_PATH)
-    print("✅ Modello e scaler caricati correttamente!")
+    print("Debug: Modello e scaler caricati correttamente!")
 except FileNotFoundError as e:
-    print(f"❌ Errore: {e}")
+    print(f"Errore: {e}")
 
 def predict_and_sort_rooms(input_data):
     # Verifica se il modello e lo scaler sono stati caricati correttamente

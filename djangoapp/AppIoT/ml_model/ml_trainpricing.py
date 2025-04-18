@@ -16,7 +16,7 @@ except locale.Error:
     try:
         locale.setlocale(locale.LC_TIME, "it_IT")
     except locale.Error:
-        print("⚠️ Impossibile impostare il locale italiano. Verifica la configurazione locale del sistema.")
+        print("Errore: Impossibile impostare il locale italiano. Verifica la configurazione locale del sistema.")
 
 # Caricare il dataset
 file_path = r'C:\Users\Nicolò\Documents\IoT2025\dataset_prezzo.csv'
@@ -52,7 +52,7 @@ model_path = os.path.join(os.path.dirname(__file__), "modello_prezzo.pkl")
 with open(model_path, "wb") as file:
     pickle.dump((model, label_encoder), file)
 
-print(f"✅ Modello e encoder salvati come '{model_path}'")
+print(f"Debug: Modello e encoder salvati come '{model_path}'")
 
 # Test locale: ottenere il giorno corrente in italiano
 giorno_corrente = datetime.now().strftime("%A")
