@@ -20,7 +20,7 @@ from collections import defaultdict
 from django.db.models import Avg, Sum
 from django.utils import timezone
 from datetime import timedelta
-from .ml_model.ml_classificazione import predict_and_sort_rooms
+from .ml_model.ml_regressione import predict_and_sort_rooms
 from .serializers import RoomSerializer
 from AppIoT.mqtt.mqtt_client import send_mqtt_command
 from .models import ( Room, User, Event, UserEvent, PredictionHistory, SensorHistory, Feedback)
@@ -72,7 +72,7 @@ def admin_dashboard(request):
 
 # ----------------- ALGORITMO --------------------
 
-def calculate_rating(room, user_lat=None, user_lon=None):
+def calculate_rating(room, user_lat=None, user_lon=None, user=None):
     # Calcola il punteggio combinato per i dati dei sensori (arrotondando a una cifra decimale)
     sensor_score = (
         (1 - abs(round(room.temperature, 1) - 22) / 10) +  # 22°C valore ottimale
@@ -99,7 +99,18 @@ def calculate_rating(room, user_lat=None, user_lon=None):
         avg_voto = feedbacks.aggregate(Avg('voto'))['voto__avg']
         feedback_score = min(avg_voto / 5, 1)
 
-    return 0.5 * sensor_score + 0.2 * price_normalized + 0.2 * distance_score + 0.1 * feedback_score
+    # Calcola il contributo degli eventi se c'è l'utente
+    event_score = event_proximity_score(room, user) if user else 0
+
+    final_rating = (
+        0.5 * sensor_score +
+        0.2 * price_normalized +
+        0.2 * distance_score +
+        0.05 * feedback_score +
+        0.05 * event_score
+    )
+
+    return final_rating
 
 
 def find_optimal_room(user_lat=None, user_lon=None):
@@ -109,8 +120,13 @@ def find_optimal_room(user_lat=None, user_lon=None):
     if not rooms.exists():
         return None
 
+    try:
+        user = User.objects.get(name="Riccardo", surname="Reale")
+    except User.DoesNotExist:
+        user = None
+    
     for room in rooms:
-        room.rating = calculate_rating(room, user_lat, user_lon)
+        room.rating = calculate_rating(room, user_lat, user_lon, user=user)
 
     # Ordina prima per Online, bestroom (1=ottimali) e poi per il rating in ordine decrescente
     rooms_sorted = sorted(rooms, key=lambda r: (r.online_status, r.bridge != 'empty', r.bestroom, r.rating), reverse=True)
@@ -176,14 +192,24 @@ def check_and_alert(room, bridge_name):
         alert_message = f"[WARNING:{room.name}:{bridge_name}] : Alta temperatura: {room.temperature} gradi"
         send_alert_mqtt(room, alert_message)
         print(f"Debug: {alert_message}")
+    
+    if room.temperature < 17:
+        alert_message = f"[WARNING:{room.name}:{bridge_name}] : Bassa temperatura: {room.temperature} gradi"
+        send_alert_mqtt(room, alert_message)
+        print(f"Debug: {alert_message}")
 
     if room.co2 > 750:
         alert_message = f"[WARNING:{room.name}:{bridge_name}] : CO2 elevata: {room.co2} ppm"
         send_alert_mqtt(room, alert_message)
         print(f"Debug: {alert_message}")
 
-    if room.light < 200:
-        alert_message = f"[WARNING:{room.name}:{bridge_name}] : Luce molto bassa: {room.light} lux"
+    if room.light < 300:
+        alert_message = f"[WARNING:{room.name}:{bridge_name}] : Luce bassa: {room.light} lux"
+        send_alert_mqtt(room, alert_message)
+        print(f"Debug: {alert_message}")
+
+    if room.light > 650:
+        alert_message = f"[WARNING:{room.name}:{bridge_name}] : Luce alta: {room.light} lux"
         send_alert_mqtt(room, alert_message)
         print(f"Debug: {alert_message}")
 
@@ -304,6 +330,22 @@ def haversine(lat1, lon1, lat2, lon2):
     distance = R * c * 1000  # Converti in metri
     return distance
 
+def event_proximity_score(room, user):
+    eventi = UserEvent.objects.filter(utente=user)
+    min_distance = float('inf')
+    
+    for evento in eventi:
+        if evento.latitudine and evento.longitudine:
+            distance = haversine(room.latitudine, room.longitudine, evento.latitudine, evento.longitudine)
+            if distance < min_distance:
+                min_distance = distance
+    
+    # Se nessun evento ha coordinate, score = 0
+    if min_distance == float('inf'):
+        return 0
+
+    # Score decrescente: più l'evento è vicino, più alto è lo score
+    return max(0, 1 - (min_distance / 5000))  # 5 km → score da 1 a 0
 
 @csrf_exempt
 def receive_sensor_data(request):
@@ -347,7 +389,7 @@ def receive_sensor_data(request):
             for e in Event.objects.all()
         )
 
-        # --- ML: Classificazione stanza ---
+        # --- ML: Regressione e classificazione stanza ---
         input_data = pd.DataFrame([{
             'Temperature': temperature,
             'Humidity': humidity,
@@ -357,9 +399,18 @@ def receive_sensor_data(request):
             'Room_Size': room_size,
             'People': people
         }])
+
+        # Preprocessing per la regressione: applica la differenza assoluta dai valori ideali
+        input_data["Temperature"] = (input_data["Temperature"] - 23).abs()
+        input_data["Humidity"] = (input_data["Humidity"] - 50).abs()
+        input_data["Light_scaled"] = (input_data["Light_scaled"] - 500).abs()
+
         prediction = predict_and_sort_rooms(input_data).iloc[0]
-        predicted_class = int(prediction['predicted_class'])
         probability = round(prediction['probability'], 3)
+        # Limita la probabilità tra 0 e 1 per evitare valori assurdi
+        probability = max(0, min(probability, 1))
+        # Determina bestroom sulla base di una soglia (es. 0.5)
+        predicted_class = 1 if probability >= 0.5 else 0
 
         # --- ML: Prezzo predetto ---
         if type and type.lower() == "studio":
@@ -447,7 +498,7 @@ def receive_sensor_data(request):
 
         # Check se tutte le stanze del bridge sono aggiornate di recente
         bridge_rooms = Room.objects.filter(bridge=bridge_name)
-        update_threshold = timezone.now() - timedelta(seconds=10)
+        update_threshold = timezone.now() - timedelta(seconds=1200000)
 
         # Debug: stampa stato aggiornamento di ogni stanza del bridge
         print(f"Debug: Stato aggiornamenti stanze del bridge '{bridge_name}':")
@@ -457,21 +508,36 @@ def receive_sensor_data(request):
         # Solo se tutte le stanze sono aggiornate di recente, procedi
         if all(r.last_update and r.last_update > update_threshold for r in bridge_rooms):
             active_bridges = Room.objects.filter(online_status=True).values_list("bridge", flat=True).distinct()
-            should_upload = all(bridge_priority_score(b) < new_score for b in active_bridges)
+            should_upload = all(bridge_priority_score(b) < new_score for b in active_bridges if b != bridge_name)
             print(f"Debug: Bridge attivi: {[(b, bridge_priority_score(b)) for b in active_bridges]}")
 
             if should_upload:
-                print(f"Upload dei dati per il bridge '{bridge_name}' con punteggio {new_score}")
+                print(f"Debug: Upload dei dati per il bridge '{bridge_name}' con punteggio {new_score}")
 
                 # Reset stanze attive
                 Room.objects.filter(online_status=True).update(online_status=False, adafruit_position=None)
 
-                # Seleziona le 3 migliori stanze del bridge
-                stanze_attive = bridge_rooms.order_by('-probability')[:3]
+                stanze_attive = []
+                stanze_selezionate = set()
 
-                # Assegna posizione e online_status in bulk
+                for room in bridge_rooms.order_by('-probability'):
+                    print(f"Debug: Candidato → {room.name} con probability {room.probability}")
+                    if (room.name, room.bridge) not in stanze_selezionate:
+                        stanze_attive.append(room)
+                        stanze_selezionate.add((room.name, room.bridge))
+                    if len(stanze_attive) == 3:
+                        break
+
+                print("Debug: Stanze selezionate per upload Adafruit (senza duplicati):")
+                for stanza in stanze_attive:
+                    print(f" - {stanza.name} → probabilità: {stanza.probability}")
+
+
+                # Assegna posizione SOLO se esiste una stanza per quella posizione
                 for i, stanza in enumerate(stanze_attive, start=1):
-                    Room.objects.filter(id=stanza.id).update(adafruit_position=i, online_status=True)
+                    stanza.adafruit_position = i
+                    stanza.online_status = True
+                    stanza.save()
 
                 # Ricarica dal DB le stanze aggiornate
                 stanze_attive = Room.objects.filter(id__in=[s.id for s in stanze_attive])
@@ -485,7 +551,7 @@ def receive_sensor_data(request):
                 # Ricarica le stanze dal DB per avere la versione aggiornata
                 stanze_attive = Room.objects.filter(id__in=[s.id for s in stanze_attive])
 
-                print("Stanze selezionate per upload Adafruit:")
+                print("Debug: Stanze selezionate per upload Adafruit:")
                 for stanza in stanze_attive:
                     pos = stanza.adafruit_position
                     print(f" - {stanza.name} → posizione: {pos}, probabilità: {stanza.probability}")
@@ -549,8 +615,9 @@ def predict_view(request):
 
             # Prepara la risposta come JSON
             response = {
-                "sorted_rooms": sorted_rooms[['Temperature', 'Humidity', 'Light_scaled', 'CO2_scaled', 'Sound', 'Room_Size', 'People', 'probability', 'predicted_class']].to_dict(orient='records')
+                "sorted_rooms": sorted_rooms[['Temperature', 'Humidity', 'Light_scaled', 'CO2_scaled', 'Sound', 'Room_Size', 'People', 'probability']].to_dict(orient='records')
             }
+
             return JsonResponse(response, status=200)
 
         except Exception as e:
@@ -675,22 +742,28 @@ def api_eventi_utente(request):
             if not name or not eventi:
                 return JsonResponse({"error": "Nome o eventi mancanti"}, status=400)
 
-            print(f"Eventi ricevuti per {name} {surname}:")
-            for ev in eventi:
-                print(f"  • {ev.get('titolo')} - {ev.get('inizio')} → {ev.get('fine')} @ {ev.get('luogo', 'N/D')}")
+            print(f"Debug: Eventi ricevuti per {name} {surname}:")
+
+            # Lista di parole chiave per filtrare gli eventi
+            keywords = ['studio', 'riunione', 'esame', 'aula', 'conferenza', 'lezione', 'seminario']
 
             utente, _ = User.objects.get_or_create(name=name, surname=surname)
 
             for evento in eventi:
-                titolo = evento.get('titolo')
+                titolo = evento.get('titolo', '').lower()  # Converto in minuscolo per confrontare senza case-sensitive
                 luogo = evento.get('luogo', '')
                 inizio = evento.get('inizio')
                 fine = evento.get('fine')
 
+                # Filtra gli eventi che NON contengono nessuna delle keyword → SKIP
+                if not any(kw in titolo for kw in keywords):
+                    print(f"Debug: Evento '{titolo}' ignorato (non matcha le keyword)")
+                    continue
+
                 if not titolo or not inizio or not fine:
                     continue
 
-                print(f"Evento: {titolo}")
+                print(f"Debug: Evento valido: {titolo}")
 
                 # Ignora le lat/lon arrivate
                 latitudine = None
@@ -703,11 +776,11 @@ def api_eventi_utente(request):
                     if location:
                         latitudine = location.latitude
                         longitudine = location.longitude
-                        print(f"Geocodificato '{luogo}' → ({latitudine}, {longitudine})")
+                        print(f"Debug: Geocodificato '{luogo}' → ({latitudine}, {longitudine})")
                     else:
-                        print(f"Nominatim NON ha trovato il luogo: '{luogo}'")
+                        print(f"Debug: Nominatim NON ha trovato il luogo: '{luogo}'")
                 except Exception as e:
-                    print(f"Errore geocoding '{luogo}': {e}")
+                    print(f"Debug: Errore geocoding '{luogo}': {e}")
 
                 # Conversione timestamp ISO con Z
                 fromiso = lambda s: datetime.fromisoformat(s.replace("Z", "+00:00"))
@@ -722,7 +795,7 @@ def api_eventi_utente(request):
                     longitudine=longitudine
                 )
 
-            return JsonResponse({"message": "Eventi salvati correttamente"})
+            return JsonResponse({"message": "Eventi salvati correttamente (filtrati per keyword)"})
 
         except json.JSONDecodeError:
             return JsonResponse({"error": "Formato JSON non valido"}, status=400)
