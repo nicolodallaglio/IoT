@@ -7,9 +7,9 @@ url = "http://127.0.0.1:8000/api/receive_sensor_data/"
 
 # Stanza unica simulata
 stanza = {
-    "bridge_name": "casa_mia",
-    "room_name": "simulazione 2",
-    "room_size": 120,
+    "bridge_name": "casa_tua",
+    "room_name": "simC",
+    "room_size": 80,
     "latitudine": 44.6280,
     "longitudine": 10.9480,
     "type": "studio"
@@ -18,7 +18,7 @@ stanza = {
 # Funzione per generare dati sensori
 def genera_dati_sensori(room_size):
     return {
-        "temperature": round(random.uniform(10, 20), 1),
+        "temperature": round(random.uniform(10, 27), 1),
         "humidity": round(random.uniform(20, 65), 1),
         "light": round(random.uniform(100, 800), 1),
         "co2": round(random.uniform(100, 800), 1),

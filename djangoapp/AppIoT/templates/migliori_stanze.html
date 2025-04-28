@@ -30,7 +30,6 @@
                     <th>Probabilità</th>
                     <th>Stato Online</th>
                     <th>Ultimo Aggiornamento</th>
-                    <th>Stanze Adiacenti</th>
                 </tr>
             </thead>
             <tbody>
@@ -54,13 +53,6 @@
                         <td>{{ aula.probability|floatformat:2 }}</td>
                         <td>{% if aula.online_status %} ✅ Online {% else %} ❌ Offline {% endif %}</td>
                         <td>{{ aula.last_update }}</td>
-                        <td>
-                            {% for adjacent in aula.adjacent_rooms.all %}
-                                {{ adjacent.name }}{% if not forloop.last %}, {% endif %}
-                            {% empty %}
-                                Nessuna
-                            {% endfor %}
-                        </td>
                     </tr>
                 {% endfor %}
             </tbody>

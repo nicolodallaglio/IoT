@@ -86,16 +86,21 @@ def admin_dashboard(request):
 
 # ----------------- ALGORITHM --------------------
 
-def calculate_rating(room, user_lat=None, user_lon=None, user=None):
-    # Calcola il punteggio combinato per i dati dei sensori (arrotondando a una cifra decimale)
-    sensor_score = (
-        (1 - abs(round(room.temperature, 1) - 22) / 10) +  # 22°C valore ottimale
-        (1 - abs(round(room.co2, 1) - 400) / 1000) +       # 400 ppm valore ottimale
-        (1 - abs(round(room.sound, 1) - 30) / 40) +        # 30 dB valore ottimale
-        (round(room.light, 1) / 1000)                      # Normalizza la luce
-    ) / 4  # Media dei punteggi dei sensori
+def calculate_rating(room, user_lat=None, user_lon=None, user=None, max_price=30):
+    # ---- Sensor Score ----
+    temp_score = max(0, 1 - abs(round(room.temperature, 1) - 22) / 10)
+    co2_score = max(0, 1 - abs(round(room.co2, 1) - 400) / 1000)
+    sound_score = max(0, 1 - abs(round(room.sound, 1) - 30) / 40)
+    light_score = min(round(room.light, 1) / 1000, 1)
 
-    # Calcolo della distanza dall'utente, max distanza 2 km
+    sensor_score = (
+        0.30 * temp_score +
+        0.35 * co2_score +
+        0.20 * sound_score +
+        0.15 * light_score
+    )
+
+    # ---- Distance Score ----
     distance_score = 0
     if user_lat is not None and user_lon is not None and room.latitudine and room.longitudine:
         distance = haversine(user_lat, user_lon, room.latitudine, room.longitudine)
@@ -104,27 +109,29 @@ def calculate_rating(room, user_lat=None, user_lon=None, user=None):
         if distance <= max_distance:
             print(f"Stanza vicina trovata: {room.name} a {distance:.2f} m")
 
-    # Normalizza il prezzo: assumendo che 30 sia il massimo prezzo
-    price_normalized = (30 - room.price) / 30
+    # ---- Price Score ----
+    price_normalized = max(0, (max_price - room.price) / max_price)
 
+    # ---- Feedback Score ----
     feedback_score = 0
     feedbacks = room.feedbacks.all()
     if feedbacks.exists():
         avg_voto = feedbacks.aggregate(Avg('voto'))['voto__avg']
         feedback_score = min(avg_voto / 5, 1)
 
-    # Calcola il contributo degli eventi se c'è l'utente
+    # ---- Event Score ----
     event_score = event_proximity_score(room, user) if user else 0
 
+    # ---- Final Rating (Weighted Sum) ----
     final_rating = (
-        0.5 * sensor_score +
-        0.2 * price_normalized +
-        0.2 * distance_score +
+        0.40 * sensor_score +
+        0.20 * price_normalized +
+        0.10 * distance_score +
         0.05 * feedback_score +
-        0.05 * event_score
+        0.25 * event_score
     )
 
-    return final_rating
+    return round(final_rating, 2)
 
 
 def find_optimal_room(user_lat=None, user_lon=None):
