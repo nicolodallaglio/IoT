@@ -31,40 +31,35 @@ except locale.Error:
 
 from geopy.geocoders import GoogleV3
 
-# Chiave API di Google
-api_key = "AIzaSyCpdJrhynybDB1T7E1_7ajF6BziTVm8IFQ"  # Inserisci la tua chiave API di Google
+# Key API Google
+api_key = "AIzaSyCpdJrhynybDB1T7E1_7ajF6BziTVm8IFQ"
 
-from geopy.geocoders import GoogleV3
 
-# Chiave API di Google
-api_key = "AIzaSyCpdJrhynybDB1T7E1_7ajF6BziTVm8IFQ"  # Inserisci la tua chiave API di Google
-
-# Funzione per ottenere le coordinate geografiche
 def get_coordinates(location):
     geolocator = GoogleV3(api_key=api_key)
     try:
         # Primo tentativo: utilizza il nome esatto
         geo_location = geolocator.geocode(location, timeout=10)
         if geo_location:
-            print(f"✅ Coordinate trovate per '{location}': {geo_location.latitude}, {geo_location.longitude}")
+            print(f"Coordinate trovate per '{location}': {geo_location.latitude}, {geo_location.longitude}")
             return geo_location.latitude, geo_location.longitude
         
         # Secondo tentativo: aggiungi "Modena" alla fine del nome
         geo_location = geolocator.geocode(f"{location}, Modena", timeout=10)
         if geo_location:
-            print(f"✅ Coordinate trovate per '{location}, Modena': {geo_location.latitude}, {geo_location.longitude}")
+            print(f"Coordinate trovate per '{location}, Modena': {geo_location.latitude}, {geo_location.longitude}")
             return geo_location.latitude, geo_location.longitude
         
         # Terzo tentativo: prova con un termine più generico
         geo_location = geolocator.geocode(f"{location}, Italia", timeout=10)
         if geo_location:
-            print(f"✅ Coordinate trovate per '{location}, Italia': {geo_location.latitude}, {geo_location.longitude}")
+            print(f"Coordinate trovate per '{location}, Italia': {geo_location.latitude}, {geo_location.longitude}")
             return geo_location.latitude, geo_location.longitude
         
-        print(f"❌ Coordinate non trovate per '{location}'")
+        print(f"Coordinate non trovate per '{location}'")
         return None, None
     except Exception as e:
-        print(f"❌ Errore nel geocoding per '{location}': {e}")
+        print(f"Errore nel geocoding per '{location}': {e}")
         return None, None
 
 
@@ -158,7 +153,7 @@ def save_event(title, location, dates):
         if lat is None or lon is None:
             lat = 44.62902432803542
             lon = 10.94885144130329
-            print(f"❌ Coordinate non trovate, inserite coordinate fisse per '{location}'")
+            print(f"Coordinate non trovate, inserite coordinate fisse per '{location}'")
 
         # Verifica se le date sono effettivamente oggetti datetime
         if not isinstance(start_date, datetime) or not isinstance(end_date, datetime):
@@ -182,13 +177,12 @@ def save_event(title, location, dates):
             event_instance.latitudine = lat
             event_instance.longitudine = lon
             event_instance.save()
-            print(f"🔄 Aggiornato (forzato): {event_instance}")
+            print(f"Aggiornato (forzato): {event_instance}")
         else:
-            print(f"✅ Creato: {event_instance}")
+            print(f"Creato: {event_instance}")
 
     except Exception as e:
-        print(f"❌ Errore nel salvataggio dell'evento: {e}")
-
+        print(f"Errore nel salvataggio dell'evento: {e}")
 
 
 # Crawler per ModenaToday

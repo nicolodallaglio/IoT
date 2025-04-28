@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard Admin - SmartRooms</title>
+    <title>Admin Dashboard - SmartRooms</title>
     <style>
         body { font-family: sans-serif; padding: 20px; }
         .bridge { margin-bottom: 40px; }
@@ -18,27 +18,27 @@
         .last-update { font-size: 0.9em; color: gray; }
     </style>
     <script>
-        // Refresh automatico ogni 20 secondi
+        // Automatic refresh every 20 seconds
         setInterval(() => window.location.reload(), 20000);
     </script>
 </head>
 <body>
-    <h1>SmartRooms - Dashboard Admin</h1>
+    <h1>SmartRooms - Admin Dashboard</h1>
 
     {% for bridge, stanze in bridges.items %}
     <div class="bridge">
-        <h2>Bridge: {{ bridge }} ({{ stanze|length }} stanze)</h2>
-        <p class="last-update">Ultimo aggiornamento: {{ stanze.0.last_update|date:"d/m/Y H:i:s" }}</p>
+        <h2>Bridge: {{ bridge }} ({{ stanze|length }} rooms)</h2>
+        <p class="last-update">Last update: {{ stanze.0.last_update|date:"d/m/Y H:i:s" }}</p>
 
         <table>
             <tr>
-                <th>Nome</th>
-                <th>Probabilità</th>
+                <th>Name</th>
+                <th>Probability</th>
                 <th>Bestroom</th>
                 <th>Online</th>
-                <th>Ultimo Update</th>
+                <th>Last Update</th>
+                <th>Occupancy</th> <!-- 🚀 Occupancy column -->
                 <th>Alert</th>
-                <th>Storico</th>
             </tr>
             {% for room in stanze %}
             <tr>
@@ -49,8 +49,10 @@
                     {% if room.online_status %}✔️{% else %}❌{% endif %}
                 </td>
                 <td>{{ room.last_update|date:"H:i:s" }}</td>
-                <td class="{% if room.alert_level == 'OK' %}alert-ok{% elif room.alert_level == 'WARNING' %}alert-warning{% else %}alert-critical{% endif %}">{{ room.alert_level }}</td>
-                <td><a href="/storico_sensori/{{ room.id }}">📊</a></td>
+                <td>{{ room.people }} / {{ room.room_size }}</td> <!-- 🚀 Occupancy -->
+                <td class="{% if room.alert_level == 'OK' %}alert-ok{% elif room.alert_level == 'WARNING' %}alert-warning{% else %}alert-critical{% endif %}">
+                    {{ room.alert_level }}
+                </td>
             </tr>
             {% endfor %}
         </table>

@@ -65,7 +65,7 @@
 
     <h1>{{ greeting_message }}</h1>
 
-    <h2>Sezioni disponibili:</h2>
+    <h2>Available sections:</h2>
     <ul>
         {% for url_data in other_urls %}
             <li>
@@ -78,7 +78,7 @@
 
     {% if stanze %}
         <div class="dropdown">
-            <h2>Storico predizioni per stanza:</h2>
+            <h2>Prediction History for Room:</h2>
             <form method="get" action="" onsubmit="return goToPrediction()">
                 <select id="predictionSelector">
                     {% for stanza in stanze %}
@@ -90,7 +90,7 @@
         </div>
 
         <div class="dropdown">
-            <h2>Storico sensori per stanza:</h2>
+            <h2>Sensor History for Room:</h2>
             <form method="get" action="" onsubmit="return goToSensor()">
                 <select id="sensorSelector">
                     {% for stanza in stanze %}

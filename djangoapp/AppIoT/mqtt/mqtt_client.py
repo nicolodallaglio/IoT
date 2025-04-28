@@ -1,117 +1,161 @@
 import paho.mqtt.client as mqtt
+from AppIoT.models import Room
 import json
 from django.conf import settings
 
 # MQTT Client
 client = mqtt.Client()
 
-# Callback per la connessione
+# Callback
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print("Debug: Connesso al broker MQTT")
-        client.subscribe("bridge/alert")
+        print("MQTT: Connected to the MQTT broker")
         client.subscribe("bridge/warning")
+        client.subscribe(f"{settings.ADAFRUIT_AIO_USERNAME}/feeds/stanza-1.status")
+        client.subscribe(f"{settings.ADAFRUIT_AIO_USERNAME}/feeds/stanza-2.status")
+        client.subscribe(f"{settings.ADAFRUIT_AIO_USERNAME}/feeds/stanza-3.status")
+
     else:
-        print(f"Error: Connessione fallita al broker MQTT con codice: {rc}")
+        print(f"Error: Failed to connect to the MQTT broker with code: {rc}")
 
 
-"""# Callback per la ricezione dei messaggi
+alarm_active = {}
+
+
+def get_posizione_to_stanza():
+    stanze_attive = Room.objects.filter(online_status=True, adafruit_position__isnull=False)
+    return {stanza.adafruit_position: stanza.name for stanza in stanze_attive}
+
 def on_message(client, userdata, msg):
-    print(f"Messaggio ricevuto da {msg.topic}: {msg.payload.decode()}")
-    payload = json.loads(msg.payload.decode())
-    handle_message(msg.topic, payload)"""
+    topic = msg.topic
+    print(f"MQTT: → Message received on topic {topic}")
 
-"""# Gestore dei messaggi ricevuti
-def handle_message(topic, payload):
     try:
-        # Identifica la stanza che ha pubblicato lo stato
-        source_room = payload.get("room")  # es. "stanza-1"
-        co2 = payload.get("co2", 0)
-        sound = payload.get("sound", 0)
-        people = payload.get("people", 0)
-        status = payload.get("status", "OK")
-        room_size = payload.get("room_size", 0)
-        occupancy_ratio = people / room_size if room_size else 0 
-
-        print(f"📡 Stato ricevuto da {source_room}: CO2={co2}, SOUND={sound}, PEOPLE={people}, STATUS={status}")
-
-        # Lista delle altre stanze (per comunicazione interna)
-        all_rooms = ["stanza-1", "stanza-2", "stanza-3"]
-        other_rooms = [room for room in all_rooms if room != source_room]
-
-        # --- REGOLA 1: RUMORE ALTO → LE ALTRE STANZE ATTIVANO LUCE DI AVVISO ---
-        if status == "NOISY" or sound > 50:
-            for room in other_rooms:
-                print(f"🔇 {source_room} è rumorosa, invio comando silenzioso a {room}")
-                send_mqtt_command(f"{room}/comando", {
-                    "action": "attiva_luce_silenzio",
-                    "message": f"{source_room} è rumorosa. Mantenere quiete."
-                })
-
-        # --- REGOLA 2: CO2 ALTA → LE ALTRE STANZE ATTIVANO VENTILAZIONE ---
-        if co2 > 1200:
-            for room in other_rooms:
-                print(f"🌀 CO2 alta in {source_room}, attivo ventilazione in {room}")
-                send_mqtt_command(f"{room}/comando", {
-                    "action": "attiva_ventilazione",
-                    "message": f"CO2 alta in {source_room}. Aiuto con ventilazione."
-                })
-
-        # --- REGOLA 3: STANZA AFFOLLATA (>80%) → LE ALTRE INVITANO ---
-        if occupancy_ratio >= 0.8:
-            for room in other_rooms:
-                print(f"🚶 {source_room} è affollata ({occupancy_ratio:.1%}), invito a trasferirsi in {room}")
-                send_mqtt_command(f"{room}/comando", {
-                    "action": "invita_occupazione",
-                    "message": f"{source_room} è al {int(occupancy_ratio*100)}% della capienza. Questa stanza è libera!"
-                })
-
-
-        # --- REGOLA 4 (extra): Tutto OK → Disattiva notifiche nelle altre stanze ---
-        if status == "OK" and co2 < 800 and sound < 40 and people < 4:
-            for room in other_rooms:
-                print(f"✅ {source_room} è tranquilla, disattivo notifiche in {room}")
-                send_mqtt_command(f"{room}/comando", {
-                    "action": "disattiva_notifiche",
-                    "message": f"{source_room} è tornata in condizioni ottimali."
-                })
-
+        payload = json.loads(msg.payload.decode())
+        print(f"MQTT: → Payload decoded: {payload}")
     except Exception as e:
-        print(f"Errore durante handle_message: {str(e)}")"""
+        print(f"MQTT ERROR: Decode JSON failed → {e}")
+        return
+
+    topic_parts = topic.split('/')
+    feed_name = topic_parts[-1]
+    source_stanza = feed_name.split('.')[0]  # es. 'stanza-1'
+
+    # ---- Mapping active positions ----
+    posizione_to_stanza = get_posizione_to_stanza()
+    # es. {1: 'simulazione4', 2: 'simulazione 1', 3: 'simulazione 2'}
+
+    # Converto 'stanza-1' → 1
+    if source_stanza.startswith('stanza-'):
+        try:
+            source_posizione = int(source_stanza.split('-')[1])
+        except ValueError:
+            print(f"MQTT WARNING: source_stanza {source_stanza} has not a valid position!")
+            return
+    else:
+        print(f"MQTT WARNING: source_stanza {source_stanza} not found as room-X.")
+        return
+
+    # Ottengo il vero nome della stanza dalla posizione
+    source_stanza_name = posizione_to_stanza.get(source_posizione)
+    if not source_stanza_name:
+        print(f"MQTT WARNING: no room assigned to {source_posizione}")
+        return
+
+    print(f"MQTT: → Message received from: {source_stanza_name} (position {source_posizione})")
+
+    # ---- Controlla payload ----
+    status = payload.get("status")
+    co2 = payload.get("co2")
+    sound = payload.get("sound")
+    people = payload.get("people")
+    room_size = payload.get("room_size")
+    bridge_name = payload.get("bridge_name", "unknown_bridge")
+
+    if None in [status, co2, sound, people, room_size]:
+        print(f"MQTT WARNING: Payload incompleto → {payload}")
+        return
+
+    occupancy_ratio = people / room_size if room_size else 0
+
+    # ---- Altre stanze (escludendo quella che ha inviato il messaggio) ----
+    other_rooms = [name for pos, name in posizione_to_stanza.items() if pos != source_posizione]
+
+    # ---- Stato allarme ----
+    if source_stanza_name not in alarm_active:
+        alarm_active[source_stanza_name] = False
+
+    # ---- REGOLA 1: FIRE ----
+    if status.strip().upper() == "FIRE":
+        alarm_active[source_stanza_name] = True
+        for target_stanza in other_rooms:
+            action = "activate_fire_alarm"
+            message = f"{source_stanza_name} is on fire!"
+            command_str = f"[COMMAND:{target_stanza}:{bridge_name}:{action}:{message}]"
+            print(f"MQTT COMMAND: → Command to {target_stanza}: {command_str}")
+            send_mqtt_command(f"{settings.ADAFRUIT_AIO_USERNAME}/feeds/bridge.command", command_str)
+
+    # ---- REGOLA 2: HIGH_CO2 ----
+    if status.strip().upper() == "HIGH_CO2":
+        alarm_active[source_stanza_name] = True
+        for target_stanza in other_rooms:
+            action = "activate_ventilation"
+            message = f"High CO2 in {source_stanza_name}, help with ventilation!"
+            command_str = f"[COMMAND:{target_stanza}:{bridge_name}:{action}:{message}]"
+            print(f"MQTT COMMAND: → Command to {target_stanza}: {command_str}")
+            send_mqtt_command(f"{settings.ADAFRUIT_AIO_USERNAME}/feeds/bridge.command", command_str)
+
+    # ---- REGOLA 3: OVERCROWDING ----
+    if occupancy_ratio >= 0.8:
+        alarm_active[source_stanza_name] = True
+        for target_stanza in other_rooms:
+            action = "invite_occupancy"
+            message = f"{source_stanza_name} is {int(occupancy_ratio * 100)}%, come here!"
+            command_str = f"[COMMAND:{target_stanza}:{bridge_name}:{action}:{message}]"
+            print(f"MQTT COMMAND: → Command to {target_stanza}: {command_str}")
+            send_mqtt_command(f"{settings.ADAFRUIT_AIO_USERNAME}/feeds/bridge.command", command_str)
+
+    # ---- REGOLA 4: OK (reset) ----
+    if status.strip().upper() == "OK":
+        if alarm_active.get(source_stanza_name, False):
+            for target_stanza in other_rooms:
+                action = "deactivate_notifications"
+                message = f"{source_stanza_name} is OK, you can turn off notifications."
+                command_str = f"[COMMAND:{target_stanza}:{bridge_name}:{action}:{message}]"
+                print(f"MQTT COMMAND: → Command to {target_stanza}: {command_str}")
+                send_mqtt_command(f"{settings.ADAFRUIT_AIO_USERNAME}/feeds/bridge.command", command_str)
+            alarm_active[source_stanza_name] = False
 
 
-# Invio comando tramite MQTT
-def send_mqtt_command(topic, payload):
+
+# Funzione per inviare comandi o alert tramite MQTT
+def send_mqtt_command(topic, payload, target=None):
     try:
-        # Converti il payload in JSON
+        # Se payload è un dizionario e c'è target, aggiungilo
+        if isinstance(payload, dict) and target is not None:
+            payload['target'] = target
+
         payload_json = json.dumps(payload)
 
-        # Verifica lo stato della connessione prima di inviare
         if not client.is_connected():
-            print("Errore: Client mqtt non connesso, tentativo di riconnessione...")
+            print("Errore: Client MQTT lost connection, try to reconnect...")
             client.reconnect()
 
-        # Pubblica il messaggio e ottieni il risultato
         result = client.publish(topic, payload_json)
-
-        # Verifica il risultato della pubblicazione
         status = result.rc
         if status == mqtt.MQTT_ERR_SUCCESS:
             return True
         else:
-            print(f"Errore: Errore nell'invio comando MQTT: Codice {status}")
+            print(f"Error command MQTT: code {status}")
             return False
     except Exception as e:
-        print(f"Errore: Errore nell'invio comando MQTT: {str(e)}")
+        print(f"Error command MQTT: {str(e)}")
         return False
 
 
-# Configurazione del client
+# Client conf
 client.on_connect = on_connect
+client.on_message = on_message
 client.username_pw_set(settings.ADAFRUIT_AIO_USERNAME, settings.ADAFRUIT_AIO_KEY)
-
-# Avvia la connessione
 client.connect("io.adafruit.com", 1883, 60)
-
-# Avvia il loop in background
 client.loop_start()

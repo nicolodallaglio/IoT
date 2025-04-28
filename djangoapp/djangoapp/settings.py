@@ -15,7 +15,7 @@ SECRET_KEY = '+=qcplywafira(ydri0pz4^pe&w)-p$305c8kyy_)5bt#q&-=-'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '95.251.170.96','smartrooms.ddns.net', "109.54.166.184", "192.168.1.210", "87.17.47.6", "172.20.10.11"]
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '95.251.170.96','smartrooms.ddns.net', "109.54.166.184", "192.168.1.210", "87.17.47.6", "172.20.10.11","192.168.1.62"]
 
 # Application definition
 
@@ -47,6 +47,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",
     "http://127.0.0.1:8000",
       # Se l'app Flutter è in esecuzione su un altro porto "http://109.54.26.124:8000",
+    "http://192.168.1.62:8000",
     "http://37.161.226.9",
     "http://smartrooms.ddns.net",
     "http://109.54.166.184",
